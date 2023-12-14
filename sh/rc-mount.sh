@@ -25,6 +25,10 @@ do_unmount()
 		f_kill="-"
 	fi
 
+	if [ "$cmd" = "umount" ]; then
+		unmount_all
+	fi
+
 	shift
 	local IFS="$__IFS"
 	set -- $(mountinfo "$@")
