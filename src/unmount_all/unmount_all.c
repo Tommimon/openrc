@@ -6,7 +6,7 @@
 #include "queue.h"
 #include "rc.h"
 
-int populateList(RC_STRINGLIST **list, int argc, char **argv)
+int populate_list(RC_STRINGLIST **list, int argc, char **argv)
 {
     FILE *fp;
     char path[4096]; // https://unix.stackexchange.com/questions/32795/what-is-the-maximum-allowed-filename-and-folder-size-with-ecryptfs
@@ -44,11 +44,38 @@ int populateList(RC_STRINGLIST **list, int argc, char **argv)
     return size;
 }
 
+typedef struct {
+    int index;
+    RC_STRING *path;
+    pthread_t *threads;
+} thread_args_t;
+
+
 /*Execute the unmount of the provided path*/
-void *unmountOne(void *path)
+void *unmount_one(void *input)
 {
+    thread_args_t *args = (thread_args_t *)input;
+    RC_STRING *prev;
+    int i;
+
+    printf("Unmounting %s\n", args->path->value);
+    prev = args->path;
+    for(i = args->index-1; i >= 0; i--) {
+        prev = TAILQ_PREV(prev, rc_stringlist, entries);
+        printf("Previous: %s at index  %d\n", prev->value, i);
+        // get index of first different char 
+        int j = 0;
+        while (args->path->value[j] == prev->value[j]) {
+            j++;
+        }
+        // if the first different char is a '/' then we have a child
+        if (prev->value[j] == '/') {
+            printf("Child: %s\n", prev->value);
+            pthread_join(args->threads[i], NULL);
+        }
+    }
     char command[4096];
-    sprintf(command, "umount %s", ((RC_STRING *)path)->value);
+    sprintf(command, "umount %s", args->path->value);
     system(command);
 }
 
@@ -60,20 +87,23 @@ int main(int argc, char **argv)
 
     printf("Starting Unmount!\n");
 
-    size = populateList(&list, argc, argv);
+    size = populate_list(&list, argc, argv);
 
-    pthread_t thread_id[size];
+    pthread_t threads_list[size];
+    thread_args_t args[size];
 
     i = 0;
     TAILQ_FOREACH(path, list, entries)
     {
-        printf("%s", path->value);
-        pthread_create(thread_id + i, NULL, unmountOne, path);
+        args[i].index = i;
+        args[i].path = path;
+        args[i].threads = threads_list;
+        pthread_create(threads_list + i, NULL, unmount_one, args + i);
         i++;
     }
 
     for (i = 0; i < size; i++)
-        pthread_join(thread_id[i], NULL);
+        pthread_join(threads_list[i], NULL);
 
     rc_stringlist_free(list);
 
