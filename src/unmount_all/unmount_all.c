@@ -13,7 +13,7 @@ int populateList(RC_STRINGLIST **list, int argc, char **argv)
     int size;
     char cmd[4096] = "mountinfo";
 
-    /* Craft the command with all passed arguments*/
+    /* Craft the command with all passed arguments but the first*/
     for (int i = 2; i < argc; i++) {
         printf("Argument: %s\n", argv[i]);
         strcat(cmd, " \"");
