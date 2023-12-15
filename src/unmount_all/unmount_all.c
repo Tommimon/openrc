@@ -8,11 +8,12 @@
 #include "rc.h"
 
 /* Contains all parameters passed to unmount_one() function */
-typedef struct t_args_t{
-    int index;                    // index of the path in the list
-    RC_STRING *path;              // path to unmount
-    pthread_mutex_t unmounting;   // mutex locked until the path is unmounted
-    struct t_args_t *args_array;  // array of all parameters of all threads
+typedef struct t_args_t
+{
+    int index;                   // index of the path in the list
+    RC_STRING *path;             // path to unmount
+    pthread_mutex_t unmounting;  // mutex locked until the path is unmounted
+    struct t_args_t *args_array; // array of all parameters of all threads
 } thread_args_t;
 
 /* Pass arguments to mountinfo and store output in a list of paths to unmount */
@@ -21,11 +22,12 @@ int populate_list(RC_STRINGLIST **list, int argc, char **argv)
     FILE *fp;
     char path[4096]; // https://unix.stackexchange.com/questions/32795/what-is-the-maximum-allowed-filename-and-folder-size-with-ecryptfs
     int size;
-    char cmd[4096] = "/lib/rc/bin/mountinfo";  //TODO: change to mountinfo
-                                               //TODO: find proper length for cmd
+    char cmd[4096] = "/lib/rc/bin/mountinfo"; // TODO: change to mountinfo
+                                              // TODO: find proper length for cmd
 
     /* Craft the command with all passed arguments but the first */
-    for (int i = 2; i < argc; i++) {
+    for (int i = 2; i < argc; i++)
+    {
         printf("Argument: %s\n", argv[i]);
         strcat(cmd, " \"");
         strcat(cmd, argv[i]);
@@ -55,7 +57,6 @@ int populate_list(RC_STRINGLIST **list, int argc, char **argv)
     return size;
 }
 
-
 /*Execute the unmount of the provided path*/
 void *unmount_one(void *input)
 {
@@ -64,16 +65,15 @@ void *unmount_one(void *input)
     char command[4096];
     int i, j;
 
+    /* Check all previous paths in the list for children */
     prev = args->path;
-    for(i = args->index-1; i >= 0; i--) {
+    for (i = args->index - 1; i >= 0; i--)
+    {
         prev = TAILQ_PREV(prev, rc_stringlist, entries);
-        /* Get index of first different char */ 
-        j = 0;
-        while (args->path->value[j] == prev->value[j]) {
-            j++;
-        }
         /* If the first different char is a '/' then we have a child */
-        if (prev->value[j] == '/') {
+        for (j = 0; args->path->value[j] == prev->value[j]; j++);
+        if (prev->value[j] == '/')
+        {
             /* Wait for child to unmount (wait for mutex to be available) */
             pthread_mutex_lock(&args->args_array[i].unmounting);
             pthread_mutex_unlock(&args->args_array[i].unmounting);
@@ -82,7 +82,7 @@ void *unmount_one(void *input)
 
     /* Unmount the path */
     sprintf(command, "umount %s", args->path->value);
-    //system(command);
+    // system(command);
     printf("Done %s\n", args->path->value);
     fflush(stdout);
 }
@@ -92,14 +92,16 @@ int main(int argc, char **argv)
     RC_STRINGLIST *list;
     RC_STRING *path;
     int size, i;
+    pthread_t *threads;
+    thread_args_t *args_array;
 
     printf("Starting Unmount!\n");
 
     /* Get list of paths to unmount */
     size = populate_list(&list, argc, argv);
 
-    pthread_t threads[size];
-    thread_args_t args_array[size];
+    threads = malloc(size * sizeof(pthread_t));
+    args_array = malloc(size * sizeof(thread_args_t));
 
     /* Unmount each path in a different thread */
     i = 0;
@@ -115,11 +117,21 @@ int main(int argc, char **argv)
     }
 
     /* Wait for all threads to finish */
-    for (i = 0; i < size; i++) {
+    for (i = 0; i < size; i++)
+    {
         pthread_join(threads[i], NULL);
         pthread_mutex_unlock(&args_array[i].unmounting);
     }
 
+    /* Destroy mutexes */
+    for (i = 0; i < size; i++)
+    {
+        pthread_mutex_destroy(&args_array[i].unmounting);
+    }
+
+    /* Free memory */
+    free(threads);
+    free(args_array);
     rc_stringlist_free(list);
 
     printf("Unmounted %d filesystems!\n", size);
