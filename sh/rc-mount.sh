@@ -26,7 +26,10 @@ do_unmount()
 	fi
 
 	if [ "$cmd" = "umount" ]; then
-		unmount_all
+		local IFS="$__IFS"
+		unmount_all "$@"
+		unset IFS
+		return 0
 	fi
 
 	shift

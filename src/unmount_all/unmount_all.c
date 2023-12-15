@@ -6,14 +6,23 @@
 #include "queue.h"
 #include "rc.h"
 
-int populateList(RC_STRINGLIST **list)
+int populateList(RC_STRINGLIST **list, int argc, char **argv)
 {
     FILE *fp;
     char path[4096]; // https://unix.stackexchange.com/questions/32795/what-is-the-maximum-allowed-filename-and-folder-size-with-ecryptfs
     int size;
+    char cmd[4096] = "mountinfo";
+
+    /* Craft the command with all passed arguments*/
+    for (int i = 2; i < argc; i++) {
+        printf("Argument: %s\n", argv[i]);
+        strcat(cmd, " \"");
+        strcat(cmd, argv[i]);
+        strcat(cmd, "\"");
+    }
 
     /* Open the command for reading */
-    fp = popen("/lib/rc/bin/mountinfo", "r");
+    fp = popen(cmd, "r");
     if (fp == NULL)
     {
         printf("Failed to run command\n");
@@ -51,7 +60,7 @@ int main(int argc, char **argv)
 
     printf("Starting Unmount!\n");
 
-    size = populateList(&list);
+    size = populateList(&list, argc, argv);
 
     pthread_t thread_id[size];
 
