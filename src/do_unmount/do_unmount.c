@@ -95,9 +95,6 @@ void *unmount_one(void *input)
     char *command;
     int i, j;
 
-    /* Allocate memory for the command */
-    command = xmalloc((strlen(args->command) + strlen(args->path->value) + 2) * sizeof(char));
-
     /* Check all previous paths in the list for children */
     prev = args->path;
     for (i = args->index - 1; i >= 0; i--)
@@ -112,6 +109,9 @@ void *unmount_one(void *input)
             pthread_mutex_unlock(&args->args_array[i].unmounting);
         }
     }
+
+    /* Allocate memory for the command */
+    command = xmalloc((strlen(args->command) + strlen(args->path->value) + 2) * sizeof(char));
 
     /* Unmount the path */
     sprintf(command, "%s %s", args->command, args->path->value);
