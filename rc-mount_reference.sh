@@ -1,3 +1,5 @@
+# TODO: remove this file
+
 # Copyright (c) 2007-2015 The OpenRC Authors.
 # See the Authors file at the top-level directory of this distribution and
 # https://github.com/OpenRC/openrc/blob/HEAD/AUTHORS

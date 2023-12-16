@@ -1,5 +1,5 @@
-executable('unmount_all',
-  ['unmount_all.c'],
+executable('do_unmount',
+  ['do_unmount.c'],
   link_with: [libeinfo, librc],
   dependencies: [util_dep],
   include_directories: [incdir, einfo_incdir, rc_incdir],
