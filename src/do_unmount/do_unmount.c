@@ -17,6 +17,7 @@
 #include <unistd.h>
 
 #include "helpers.h"
+#include "einfo.h"
 #include "queue.h"
 #include "rc.h"
 
@@ -28,6 +29,7 @@ typedef struct t_args_t
     pthread_mutex_t unmounting;  // mutex locked until the path is unmounted
     char* command;               // unmounting command to execute
     struct t_args_t *args_array; // array of all parameters of all threads
+    int retval;                  // return value of the unmounting command
 } thread_args_t;
 
 /* Pass arguments to a command and open standard output as readable file */
@@ -115,9 +117,8 @@ void *unmount_one(void *input)
 
     /* Unmount the path */
     sprintf(command, "%s %s", args->command, args->path->value);
-    system(command);
-    printf("%s\n", command);  //TODO: remove this debug line and the fflush(stdout) below
-    fflush(stdout);
+    args->retval = system(command);
+    return;
 }
 
 /*
@@ -133,11 +134,6 @@ int main(int argc, char **argv)
     int size, i;                // size of the list and iterator
     pthread_t *threads;         // array of threads
     thread_args_t *args_array;  // array of arguments for each thread
-
-    if (strstr(argv[1], "-r") != NULL)
-        printf("Remounting filesystems readonly!\n");
-    else
-        printf("Unmounting filesystems!\n");
 
     /* Get list of paths to unmount */
     size = populate_list(&list, argc, argv);
@@ -160,11 +156,19 @@ int main(int argc, char **argv)
         i++;
     }
 
-    /* Wait for all threads to finish */
+    /* Wait for all threads to finish and long info */
     for (i = 0; i < size; i++)
     {
+        if (strstr(argv[1], "-r") != NULL)
+            ebegin("Remounting %s read-only", args_array[i].path->value);
+        else
+            ebegin("Unmounting %s", args_array[i].path->value);
         pthread_join(threads[i], NULL);
         pthread_mutex_unlock(&args_array[i].unmounting);
+        if (strstr(argv[1], "-r") != NULL)
+            eend(args_array[i].retval, "Failed to remount %s", args_array[i].path->value);
+        else
+            eend(args_array[i].retval, "Failed to unmount %s", args_array[i].path->value);
     }
 
     /* Destroy mutexes */
@@ -175,8 +179,6 @@ int main(int argc, char **argv)
     free(threads);
     free(args_array);
     rc_stringlist_free(list);
-
-    printf("Unmounted/Remounted %d filesystems!\n", size);  //TODO: remove this debug line
 
     return 0;
 }
