@@ -92,8 +92,11 @@ void *unmount_one(void *input)
 {
     thread_args_t *args = (thread_args_t *)input;
     RC_STRING *prev;
-    char command[4096];
+    char *command;
     int i, j;
+
+    /* Allocate memory for the command */
+    command = xmalloc((strlen(args->command) + strlen(args->path->value) + 2) * sizeof(char));
 
     /* Check all previous paths in the list for children */
     prev = args->path;
