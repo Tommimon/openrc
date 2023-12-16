@@ -12,6 +12,7 @@ typedef struct t_args_t
 {
     int index;                   // index of the path in the list
     RC_STRING *path;             // path to unmount
+    char* command;               // unmounting command to execute
     pthread_mutex_t unmounting;  // mutex locked until the path is unmounted
     struct t_args_t *args_array; // array of all parameters of all threads
 } thread_args_t;
@@ -22,7 +23,7 @@ int populate_list(RC_STRINGLIST **list, int argc, char **argv)
     FILE *fp;
     char path[4096]; // https://unix.stackexchange.com/questions/32795/what-is-the-maximum-allowed-filename-and-folder-size-with-ecryptfs
     int size;
-    char cmd[4096] = "/lib/rc/bin/mountinfo"; // TODO: change to mountinfo
+    char cmd[4096] = "/lib/rc/bin/mountinfo"; // TODO: change to "mountinfo"
                                               // TODO: find proper length for cmd
 
     /* Craft the command with all passed arguments but the first */
@@ -81,9 +82,9 @@ void *unmount_one(void *input)
     }
 
     /* Unmount the path */
-    sprintf(command, "umount %s", args->path->value);
-    // system(command);
-    printf("Done %s\n", args->path->value);
+    sprintf(command, "%s %s", args->command, args->path->value);
+    system(command);
+    printf("%s\n", command);
     fflush(stdout);
 }
 
@@ -109,6 +110,7 @@ int main(int argc, char **argv)
     {
         args_array[i].index = i;
         args_array[i].path = path;
+        args_array[i].command = argv[1];  // Assuming argv[1] is the unmounting command
         pthread_mutex_init(&args_array[i].unmounting, NULL);
         pthread_mutex_lock(&args_array[i].unmounting);
         args_array[i].args_array = args_array;
