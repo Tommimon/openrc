@@ -131,7 +131,10 @@ int main(int argc, char **argv)
     pthread_t *threads;         // array of threads
     thread_args_t *args_array;  // array of arguments for each thread
 
-    printf("Starting Unmount/Remount!\n");  //TODO: remove this debug line
+    if (strstr(argv[1], "-r") != NULL)
+        printf("Remounting filesystems readonly!\n");
+    else
+        printf("Unmounting filesystems!\n");
 
     /* Get list of paths to unmount */
     size = populate_list(&list, argc, argv);
