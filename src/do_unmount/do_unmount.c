@@ -1,3 +1,15 @@
+/*
+ * Copyright (c) 2007-2015 The OpenRC Authors.
+ * See the Authors file at the top-level directory of this distribution and
+ * https://github.com/OpenRC/openrc/blob/HEAD/AUTHORS
+ *
+ * This file is part of OpenRC. It is subject to the license terms in
+ * the LICENSE file found in the top-level directory of this
+ * distribution and at https://github.com/OpenRC/openrc/blob/HEAD/LICENSE
+ * This file may not be copied, modified, propagated, or distributed
+ * except according to the terms contained in the LICENSE file.
+ */
+
 #include <pthread.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -13,16 +25,16 @@ typedef struct t_args_t
 {
     int index;                   // index of the path in the list
     RC_STRING *path;             // path to unmount
-    char* command;               // unmounting command to execute
     pthread_mutex_t unmounting;  // mutex locked until the path is unmounted
+    char* command;               // unmounting command to execute
     struct t_args_t *args_array; // array of all parameters of all threads
 } thread_args_t;
 
 /* Pass arguments to a command and open standard output as readable file */
 FILE *popen_with_args(const char *command, int argc, char **argv) {
     char *cmd;  // command with all arguments
-    int i;      // iterator
     int length; // length of the command with all arguments
+    int i;      // iterator
     FILE *fp;   // file pointer to the output of the command
 
     /* Calculate the length of the command */
@@ -42,10 +54,8 @@ FILE *popen_with_args(const char *command, int argc, char **argv) {
     }
 
     /* Open the command and return output file descriptor for reading */
-    printf("Running command: %s\n", cmd);
     return popen(cmd, "r");;
 }
-
 
 /* Pass arguments to mountinfo and store output in a list of paths to unmount */
 int populate_list(RC_STRINGLIST **list, int argc, char **argv)
@@ -77,7 +87,7 @@ int populate_list(RC_STRINGLIST **list, int argc, char **argv)
     return size;
 }
 
-/*Execute the unmount of the provided path*/
+/* Execute the unmount of the provided path */
 void *unmount_one(void *input)
 {
     thread_args_t *args = (thread_args_t *)input;
@@ -103,19 +113,25 @@ void *unmount_one(void *input)
     /* Unmount the path */
     sprintf(command, "%s %s", args->command, args->path->value);
     system(command);
-    printf("%s\n", command);
+    printf("%s\n", command);  //TODO: remove this debug line and the fflush(stdout) below
     fflush(stdout);
 }
 
+/*
+* Handy function to handle all our unmounting needs
+* mountinfo is a C program to actually find our mounts on our supported OS's
+* We rely on fuser being present, so if it's not then don't unmount anything. TODO: do we need to check for fuser?
+* This isn't a real issue for the BSD's, but it is for Linux.
+*/
 int main(int argc, char **argv)
 {
-    RC_STRINGLIST *list;
-    RC_STRING *path;
-    int size, i;
-    pthread_t *threads;
-    thread_args_t *args_array;
+    RC_STRINGLIST *list;        // list of paths to unmount
+    RC_STRING *path;            // path to unmount
+    int size, i;                // size of the list and iterator
+    pthread_t *threads;         // array of threads
+    thread_args_t *args_array;  // array of arguments for each thread
 
-    printf("Starting Unmount/Remount!\n");
+    printf("Starting Unmount/Remount!\n");  //TODO: remove this debug line
 
     /* Get list of paths to unmount */
     size = populate_list(&list, argc, argv);
@@ -130,9 +146,9 @@ int main(int argc, char **argv)
     {
         args_array[i].index = i;
         args_array[i].path = path;
-        args_array[i].command = argv[1];  // Assuming argv[1] is the unmounting command
         pthread_mutex_init(&args_array[i].unmounting, NULL);
         pthread_mutex_lock(&args_array[i].unmounting);
+        args_array[i].command = argv[1];  // Assuming argv[1] is the unmounting command
         args_array[i].args_array = args_array;
         pthread_create(threads + i, NULL, unmount_one, args_array + i);
         i++;
@@ -147,16 +163,14 @@ int main(int argc, char **argv)
 
     /* Destroy mutexes */
     for (i = 0; i < size; i++)
-    {
         pthread_mutex_destroy(&args_array[i].unmounting);
-    }
 
     /* Free memory */
     free(threads);
     free(args_array);
     rc_stringlist_free(list);
 
-    printf("Unmounted/Remounted %d filesystems!\n", size);
+    printf("Unmounted/Remounted %d filesystems!\n", size);  //TODO: remove this debug line
 
     return 0;
 }
