@@ -1,9 +1,10 @@
+#include <pthread.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <pthread.h>
 #include <unistd.h>
 
+#include "helpers.h"
 #include "queue.h"
 #include "rc.h"
 
@@ -17,29 +18,47 @@ typedef struct t_args_t
     struct t_args_t *args_array; // array of all parameters of all threads
 } thread_args_t;
 
-/* Pass arguments to mountinfo and store output in a list of paths to unmount */
-int populate_list(RC_STRINGLIST **list, int argc, char **argv)
-{
-    FILE *fp;
-    char path[4096]; // https://unix.stackexchange.com/questions/32795/what-is-the-maximum-allowed-filename-and-folder-size-with-ecryptfs
-    int size;
-    char cmd[4096] = "/lib/rc/bin/mountinfo"; // TODO: change to "mountinfo"
-                                              // TODO: find proper length for cmd
+/* Pass arguments to a command and open standard output as readable file */
+FILE *popen_with_args(const char *command, int argc, char **argv) {
+    char *cmd;  // command with all arguments
+    int i;      // iterator
+    int length; // length of the command with all arguments
+    FILE *fp;   // file pointer to the output of the command
 
-    /* Craft the command with all passed arguments but the first */
-    for (int i = 2; i < argc; i++)
-    {
-        printf("Argument: %s\n", argv[i]);
+    /* Calculate the length of the command */
+    length = strlen(command) + 1; // +1 for the null terminator
+    for (i = 2; i < argc; i++)
+        length += strlen(argv[i]) + 3; // +3 for the quotes and space
+    
+    /* Allocate memory for the command */
+    cmd = xmalloc(length * sizeof(char));
+    sprintf(cmd, "%s", command);
+
+    /* Craft the command with all passed arguments */
+    for (i = 2; i < argc; i++) {
         strcat(cmd, " \"");
         strcat(cmd, argv[i]);
         strcat(cmd, "\"");
     }
 
+    /* Open the command and return output file descriptor for reading */
+    printf("Running command: %s\n", cmd);
+    return popen(cmd, "r");;
+}
+
+
+/* Pass arguments to mountinfo and store output in a list of paths to unmount */
+int populate_list(RC_STRINGLIST **list, int argc, char **argv)
+{
+    int size;        // number of paths to unmount
+    FILE *fp;        // file pointer to the output of the command
+    char path[4096]; // https://unix.stackexchange.com/questions/32795/what-is-the-maximum-allowed-filename-and-folder-size-with-ecryptfs
+
     /* Open the command for reading */
-    fp = popen(cmd, "r");
+    fp = popen_with_args("mountinfo", argc, argv);
     if (fp == NULL)
     {
-        printf("Failed to run command\n");
+        printf("Failed to run mountinfo command, can't unmount anything!\n");
         exit(1);
     }
 
@@ -96,13 +115,14 @@ int main(int argc, char **argv)
     pthread_t *threads;
     thread_args_t *args_array;
 
-    printf("Starting Unmount!\n");
+    printf("Starting Unmount/Remount!\n");
 
     /* Get list of paths to unmount */
     size = populate_list(&list, argc, argv);
 
-    threads = malloc(size * sizeof(pthread_t));
-    args_array = malloc(size * sizeof(thread_args_t));
+    /* Create array of threads and array of arguments for each path in the list */
+    threads = xmalloc(size * sizeof(pthread_t));
+    args_array = xmalloc(size * sizeof(thread_args_t));
 
     /* Unmount each path in a different thread */
     i = 0;
@@ -136,7 +156,7 @@ int main(int argc, char **argv)
     free(args_array);
     rc_stringlist_free(list);
 
-    printf("Unmounted %d filesystems!\n", size);
+    printf("Unmounted/Remounted %d filesystems!\n", size);
 
     return 0;
 }
