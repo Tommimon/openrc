@@ -41,7 +41,7 @@ FILE *popen_with_args(const char *command, int argc, char **argv) {
 
     /* Calculate the length of the command */
     length = strlen(command) + 1; // +1 for the null terminator
-    for (i = 2; i < argc; i++)
+    for (i = 0; i < argc; i++)
         length += strlen(argv[i]) + 3; // +3 for the quotes and space
     
     /* Allocate memory for the command */
@@ -49,7 +49,7 @@ FILE *popen_with_args(const char *command, int argc, char **argv) {
     sprintf(cmd, "%s", command);
 
     /* Craft the command with all passed arguments */
-    for (i = 2; i < argc; i++) {
+    for (i = 0; i < argc; i++) {
         strcat(cmd, " \"");
         strcat(cmd, argv[i]);
         strcat(cmd, "\"");
@@ -67,7 +67,7 @@ int populate_list(RC_STRINGLIST **list, int argc, char **argv)
     char path[4096]; // https://unix.stackexchange.com/questions/32795/what-is-the-maximum-allowed-filename-and-folder-size-with-ecryptfs
 
     /* Open the command for reading */
-    fp = popen_with_args("mountinfo", argc, argv);
+    fp = popen_with_args("mountinfo", argc-2, argv+2);
     if (fp == NULL)
     {
         printf("Failed to run mountinfo command, can't unmount anything!\n");
