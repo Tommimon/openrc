@@ -21,15 +21,26 @@
 #include "queue.h"
 #include "rc.h"
 
+/* Forward declaration to solve circular dependency */
+struct t_args_t;
+
+/* Contains parameters shared among all threads */
+typedef struct
+{
+    char* command;                // unmounting command to execute
+    RC_STRINGLIST *shared;        // list of shared paths in the system
+    pthread_mutex_t shared_lock;  // mutex to lock shared mount operations
+    struct t_args_t *args_array;  // array of all parameters of all threads
+} global_args_t;
+
 /* Contains all parameters passed to unmount_one() function */
 typedef struct t_args_t
 {
-    int index;                   // index of the path in the list
-    RC_STRING *path;             // path to unmount
-    pthread_mutex_t unmounting;  // mutex locked until the path is unmounted
-    char* command;               // unmounting command to execute
-    struct t_args_t *args_array; // array of all parameters of all threads
-    int retval;                  // return value of the unmounting command
+    int index;                    // index of the path in the list
+    RC_STRING *path;              // path to unmount
+    pthread_mutex_t unmounting;   // mutex locked until the path is unmounted
+    global_args_t *global_args;   // parameters shared among all threads
+    int retval;                   // return value of the unmounting command
 } thread_args_t;
 
 /* Pass arguments to a command and open standard output as readable file */
@@ -59,8 +70,47 @@ FILE *popen_with_args(const char *command, int argc, char **argv) {
     return popen(cmd, "r");;
 }
 
+void populate_shared_list(RC_STRINGLIST **list) {
+    FILE *fp;
+    char *line = NULL;
+    size_t len = 0;
+    ssize_t read;
+    char *path[4096];
+
+    // init list
+    *list = rc_stringlist_new();
+
+    fp = fopen("/proc/1/mountinfo", "r");
+    if (fp == NULL)
+        exit(EXIT_FAILURE);
+
+    while ((read = getline(&line, &len, fp)) != -1) {
+        // split line by space
+        char *token = strtok(line, " ");
+        int i = 0;
+        while (token != NULL) {
+            if (i == 4)
+            {
+                // copy token into path
+                strcpy(path, token);
+            }
+            // if token contains "shared:"
+            if (strstr(token, "shared:") != NULL)
+            {
+                rc_stringlist_add(*list, path);
+            }
+            token = strtok(NULL, " ");
+            i++;
+        }
+    }
+
+    fclose(fp);
+    if (line)
+        free(line);
+}
+
 /* Pass arguments to mountinfo and store output in a list of paths to unmount */
-int populate_list(RC_STRINGLIST **list, int argc, char **argv)
+int populate_unmount_list(RC_STRINGLIST **list, int argc, char **argv)
 {
     int size;        // number of paths to unmount
     FILE *fp;        // file pointer to the output of the command
@@ -92,10 +142,10 @@ int populate_list(RC_STRINGLIST **list, int argc, char **argv)
 /* Execute the unmount of the provided path */
 void *unmount_one(void *input)
 {
-    thread_args_t *args = (thread_args_t *)input;
-    RC_STRING *prev;
-    char *command;
-    int i, j;
+    thread_args_t *args = (thread_args_t *)input;  // arguments passed to the thread
+    RC_STRING *prev;                               // backwards iterator in the paths list
+    char *command;                                 // command to execute
+    int i, j;                                      // iterators
 
     /* Check all previous paths in the list for children */
     prev = args->path;
@@ -107,51 +157,60 @@ void *unmount_one(void *input)
         if (prev->value[j] == '/')
         {
             /* Wait for child to unmount (wait for mutex to be available) */
-            pthread_mutex_lock(&args->args_array[i].unmounting);
-            pthread_mutex_unlock(&args->args_array[i].unmounting);
+            pthread_mutex_lock(&args->global_args->args_array[i].unmounting);
+            pthread_mutex_unlock(&args->global_args->args_array[i].unmounting);
         }
     }
 
     /* Allocate memory for the command */
-    command = xmalloc((strlen(args->command) + strlen(args->path->value) + 2) * sizeof(char));
+    command = xmalloc((strlen(args->global_args->command) + strlen(args->path->value) + 2) * sizeof(char));
 
     /* Unmount the path */
-    sprintf(command, "%s %s", args->command, args->path->value);
+    sprintf(command, "%s %s", args->global_args->command, args->path->value);
     args->retval = system(command);
-    return;
+    args->retval = 0;
 }
 
 /*
-* Handy function to handle all our unmounting needs
+* Handy program to handle all our unmounting needs
 * mountinfo is a C program to actually find our mounts on our supported OS's
 * We rely on fuser being present, so if it's not then don't unmount anything. TODO: do we need to check for fuser?
 * This isn't a real issue for the BSD's, but it is for Linux.
 */
 int main(int argc, char **argv)
 {
-    RC_STRINGLIST *list;        // list of paths to unmount
+    RC_STRINGLIST *to_unmount;  // list of paths to unmount
     RC_STRING *path;            // path to unmount
     int size, i;                // size of the list and iterator
     pthread_t *threads;         // array of threads
+    global_args_t global_args;  // arguments shared among all threads
     thread_args_t *args_array;  // array of arguments for each thread
 
     /* Get list of paths to unmount */
-    size = populate_list(&list, argc, argv);
+    size = populate_unmount_list(&to_unmount, argc, argv);
+
+    /* Get list of shared paths in the system */
+    populate_shared_list(&global_args.shared);
 
     /* Create array of threads and array of arguments for each path in the list */
     threads = xmalloc(size * sizeof(pthread_t));
     args_array = xmalloc(size * sizeof(thread_args_t));
 
+    /* Initialize global arguments */
+    global_args.command = argv[1];// Assuming argv[1] is the unmounting command
+    pthread_mutex_init(&global_args.shared_lock, NULL);
+    pthread_mutex_lock(&global_args.shared_lock);
+    global_args.args_array = args_array;
+
     /* Unmount each path in a different thread */
     i = 0;
-    TAILQ_FOREACH(path, list, entries)
+    TAILQ_FOREACH(path, to_unmount, entries)
     {
         args_array[i].index = i;
         args_array[i].path = path;
         pthread_mutex_init(&args_array[i].unmounting, NULL);
         pthread_mutex_lock(&args_array[i].unmounting);
-        args_array[i].command = argv[1];  // Assuming argv[1] is the unmounting command
-        args_array[i].args_array = args_array;
+        args_array[i].global_args = &global_args;
         pthread_create(threads + i, NULL, unmount_one, args_array + i);
         i++;
     }
@@ -172,13 +231,15 @@ int main(int argc, char **argv)
     }
 
     /* Destroy mutexes */
+    pthread_mutex_destroy(&global_args.shared_lock);
     for (i = 0; i < size; i++)
         pthread_mutex_destroy(&args_array[i].unmounting);
 
     /* Free memory */
     free(threads);
     free(args_array);
-    rc_stringlist_free(list);
+    rc_stringlist_free(to_unmount);
+    rc_stringlist_free(global_args.shared);
 
     return 0;
 }
