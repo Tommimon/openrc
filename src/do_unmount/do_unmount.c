@@ -149,6 +149,7 @@ void *unmount_one(void *input)
     thread_args_t *args = (thread_args_t *)input;  // arguments passed to the thread
     RC_STRING *prev;                               // backwards iterator in the paths list
     char *command;                                 // command to execute
+    char *check_command;                           // command to check mountpoint existence
     int i, j;                                      // iterators
 
     /* Check all previous paths in the list for children */
@@ -166,13 +167,33 @@ void *unmount_one(void *input)
         }
     }
 
-    /* Allocate memory for the command */
+    /* Allocate memory and compose the unmount/remount command */
     command = xmalloc((strlen(args->global_args->command) + strlen(args->path->value) + 2) * sizeof(char));
-
-    /* Unmount the path */
     sprintf(command, "%s %s", args->global_args->command, args->path->value);
-    args->retval = system(command);
-    args->retval = 0;
+
+    /* If is a shared mount, avoid any other shared mount concurrency TODO: more granular control */
+    if(rc_stringlist_find(args->global_args->shared, args->path->value)){
+        /* Allocate memory and compose the check command */
+        check_command = xmalloc((19 + strlen(args->path->value)) * sizeof(char));
+        sprintf(check_command, "mountinfo --quiet %s", args->path->value);
+        pthread_mutex_lock(&args->global_args->shared_lock);
+        /* Unmount only if is still mounted */
+        if(system(check_command) == 0)
+            args->retval = system(command);
+        else
+            args->retval = 0;
+        pthread_mutex_unlock(&args->global_args->shared_lock);
+    }
+    else
+    {
+        /* Unmount the path */
+        args->retval = system(command);
+    }
+
+    /* Free memory */
+    free(command);
+    if (check_command)
+        free(check_command);    
 }
 
 /*
@@ -203,7 +224,6 @@ int main(int argc, char **argv)
     /* Initialize global arguments */
     global_args.command = argv[1];// Assuming argv[1] is the unmounting command
     pthread_mutex_init(&global_args.shared_lock, NULL);
-    pthread_mutex_lock(&global_args.shared_lock);
     global_args.args_array = args_array;
 
     /* Unmount each path in a different thread */
