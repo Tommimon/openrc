@@ -81,6 +81,8 @@ void populate_shared_list(RC_STRINGLIST **list) {
     /* Initialize list */
     *list = rc_stringlist_new();
 
+    /* Only linux supports shared mounts, so leave the list empty for eny other OS */
+    #ifdef __linux__
     /* Open mountinfo file for reading */
     fp = fopen("/proc/1/mountinfo", "r");
     if (fp == NULL)
@@ -111,6 +113,7 @@ void populate_shared_list(RC_STRINGLIST **list) {
     fclose(fp);
     if (line)
         free(line);
+    #endif
 }
 
 /* Pass arguments to mountinfo and store output in a list of paths to unmount */
