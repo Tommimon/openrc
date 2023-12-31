@@ -71,30 +71,33 @@ FILE *popen_with_args(const char *command, int argc, char **argv) {
 }
 
 void populate_shared_list(RC_STRINGLIST **list) {
-    FILE *fp;
-    char *line = NULL;
-    size_t len = 0;
-    ssize_t read;
-    char *path[4096];
+    FILE *fp;               // file pointer to the mountinfo file
+    size_t len = 0;         // length of the line read
+    char *line = NULL;      // line read from the mountinfo file
+    char *token;            // token of the current line
+    char *path[4096];       // path to relative to the current line
+    int i;                  // iterator
 
-    // init list
+    /* Initialize list */
     *list = rc_stringlist_new();
 
+    /* Open mountinfo file for reading */
     fp = fopen("/proc/1/mountinfo", "r");
     if (fp == NULL)
         exit(EXIT_FAILURE);
 
-    while ((read = getline(&line, &len, fp)) != -1) {
-        // split line by space
-        char *token = strtok(line, " ");
-        int i = 0;
+    /* Read the output a line at a time */
+    while (getline(&line, &len, fp) != -1) {
+        /* Split line by space */
+        token = strtok(line, " ");
+        i = 0;
         while (token != NULL) {
             if (i == 4)
             {
-                // copy token into path
+                /* Copy token into path */
                 strcpy(path, token);
             }
-            // if token contains "shared:"
+            // if token contains "shared:" TODO: check if this is the correct way to check for shared mounts
             if (strstr(token, "shared:") != NULL)
             {
                 rc_stringlist_add(*list, path);
@@ -104,6 +107,7 @@ void populate_shared_list(RC_STRINGLIST **list) {
         }
     }
 
+    /* Close file and free memory */
     fclose(fp);
     if (line)
         free(line);
