@@ -182,6 +182,10 @@ void *unmount_one(void *input)
         pthread_mutex_lock(&args->global_args->shared_lock);
         /* Unmount only if is still mounted */
         if(system(check_command) == 0)
+            /*the idea is to retrieve all the pids of the processes that use the mount point with
+            popen_with_args("fuser -m", args->path->value, "2>/dev/null"), 
+            then call the exec_unmount function passing the pids and iterate over them until
+            the unmount is successful. Still speculating on how to do this.*/
             args->retval = exec_unmount(command);
         else
             args->retval = 0;            
