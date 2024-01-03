@@ -229,7 +229,12 @@ int main(int argc, char **argv)
     global_args_t global_args;  // arguments shared among all threads
     thread_args_t *args_array;  // array of arguments for each thread
 
-    //TODO: check for fuser
+    /* Check if fuser is available in PATH */
+    if(system("command -v fuser"))
+    {
+        printf("fuser is not installed, can't unmount anything!\n");
+        exit(1);
+    }
 
     /* Get list of paths to unmount */
     size = populate_unmount_list(&to_unmount, argc, argv);
