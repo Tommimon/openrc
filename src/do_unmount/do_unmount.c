@@ -182,21 +182,36 @@ void *unmount_one(void *input)
         pthread_mutex_lock(&args->global_args->shared_lock);
         /* Unmount only if is still mounted */
         if(system(check_command) == 0)
-            args->retval = system(command);
+            args->retval = exec_unmount(command);
         else
-            args->retval = 0;
+            args->retval = 0;            
         pthread_mutex_unlock(&args->global_args->shared_lock);
     }
     else
     {
         /* Unmount the path */
-        args->retval = system(command);
+        args->retval = exec_unmount(command);
     }
 
     /* Free memory */
     free(command);
     if (check_command)
         free(check_command);    
+}
+
+int exec_unmount(char *command){
+    int retry = 4;          // Effectively TERM, sleep 1, TERM, sleep 1, KILL, sleep 1
+    while(system(command) != 0){
+        if(retry <= 0)
+            return 1;
+        int signal = (retry == 1) ? SIGKILL : SIGTERM;
+        kill(atoi(pid), signal);    //TODO: find a way to get the pid of the process
+        retry--;
+        sleep(1);
+        if(retry <= 0)
+            return 1;
+    }
+    return 0;
 }
 
 /*
@@ -213,6 +228,8 @@ int main(int argc, char **argv)
     pthread_t *threads;         // array of threads
     global_args_t global_args;  // arguments shared among all threads
     thread_args_t *args_array;  // array of arguments for each thread
+
+    //TODO: check for fuser
 
     /* Get list of paths to unmount */
     size = populate_unmount_list(&to_unmount, argc, argv);
