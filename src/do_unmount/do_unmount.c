@@ -15,6 +15,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
+#include <signal.h>
 
 #include "helpers.h"
 #include "einfo.h"
@@ -182,11 +183,7 @@ void *unmount_one(void *input)
         pthread_mutex_lock(&args->global_args->shared_lock);
         /* Unmount only if is still mounted */
         if(system(check_command) == 0)
-            /*the idea is to retrieve all the pids of the processes that use the mount point with
-            popen_with_args("fuser -m", args->path->value, "2>/dev/null"), 
-            then call the exec_unmount function passing the pids and iterate over them until
-            the unmount is successful. Still speculating on how to do this.*/
-            args->retval = exec_unmount(command);
+            args->retval = exec_unmount(command, args->path->value);    //TODO: pass the mount point instead of the command
         else
             args->retval = 0;            
         pthread_mutex_unlock(&args->global_args->shared_lock);
@@ -194,7 +191,7 @@ void *unmount_one(void *input)
     else
     {
         /* Unmount the path */
-        args->retval = exec_unmount(command);
+        args->retval = exec_unmount(command, args->path->value);
     }
 
     /* Free memory */
@@ -203,18 +200,67 @@ void *unmount_one(void *input)
         free(check_command);    
 }
 
-int exec_unmount(char *command){
+int exec_unmount(char *command, char *mount_point){
     int retry = 4;          // Effectively TERM, sleep 1, TERM, sleep 1, KILL, sleep 1
+    size_t len = 0;         // length of the line read
+    char *pids = NULL;      // line read from the fuser command
+    FILE *fp;               // file pointer to the output of the command
+    char *fuser_command;    // command to execute fuser and find the pids of the processes that use the mount point
+    char *kill_command;     // command to kill the processes that use the mount point
+    char signal[4];         // signal to send to the processes that use the mount point
+    int killcheck;          // return value of the kill command
+
+    fuser_command = xmalloc((22 + strlen(mount_point)) * sizeof(char));     
+    sprintf(fuser_command, "fuser -m %s 2>/dev/null", mount_point);
+    kill_command = xmalloc((35 + strlen(mount_point)) * sizeof(char));
+
     while(system(command) != 0){
-        if(retry <= 0)
-            return 1;
-        int signal = (retry == 1) ? SIGKILL : SIGTERM;
-        kill(atoi(pid), signal);    //TODO: find a way to get the pid of the process
+        fp = popen(fuser_command, "r");
+        if(fp == NULL)
+            printf("Failed to run fuser command, can't unmount anything!\n");
+            exit(1);
+        if(getline(&pids, &len, fp) == -1){
+            printf("Failed to get pids from fuser command, can't unmount anything!\n");
+            exit(1);
+        }
+        pid_t pid = getpid();
+        if(strstr(pids, pid) != NULL)
+            printf("The mount point is being used by this process, can't unmount it!\n");
+            retry=0;
+        else if(strcmp(pid, " - ") == 0)                                                        //Mount point is not being used by any process
+            retry=0;
+        else if(strcmp(pid, "  ") != 0)                                                         //Mount point is being used by other processes but fuser can't find the pids
+            printf("The mount point is being used by other processes, can't unmount it!\n");
+            retry=0;
+        fclose(fp);
         retry--;
-        sleep(1);
-        if(retry <= 0)
+        if(retry <= 0){                                                                         //After 4 retries, return error
+            if(pids)
+                free(pids);
+            free(fuser_command);
+            free(kill_command);
             return 1;
+        }
+        if(retry == 1)                                                                          //Kill processes if it's the last retry
+            sprintf(kill_command, "fuser -KILL -k -m %s >/dev/null 2>&1", mount_point)
+        else
+            sprintf(kill_command, "fuser -TERM -k -m %s >/dev/null 2>&1", mount_point)
+        killcheck = system(kill_command);
+        if(killcheck != 0 && retry > 1)
+            printf("Failed to terminate processes using the mount point. Retrying...\n")
+        else if(killcheck != 0 && retry == 1)
+            printf("Failed to kill processes using the mount point! Can't unmount!\n")
+            if(pids)
+                free(pids);
+            free(fuser_command);
+            free(kill_command);
+            return 1;
+        sleep(1);
     }
+    if (pids)
+        free(pids);
+    free(fuser_command);
+    free(kill_command);
     return 0;
 }
 
