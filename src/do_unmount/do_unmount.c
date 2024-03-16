@@ -254,7 +254,7 @@ void *unmount_one(void *input)
         if(system(check_command) == 0)
             args->retval = exec_unmount(command, args->path->value);    //TODO: pass the mount point instead of the command
         else
-            args->retval = 0;            
+            args->retval = 0;
         pthread_mutex_unlock(&args->global_args->shared_lock);
     }
     else
@@ -266,7 +266,7 @@ void *unmount_one(void *input)
     /* Free memory */
     free(command);
     if (check_command)
-        free(check_command);    
+        free(check_command);
 }
 
 
@@ -284,6 +284,13 @@ int main(int argc, char **argv)
     pthread_t *threads;         // array of threads
     global_args_t global_args;  // arguments shared among all threads
     thread_args_t *args_array;  // array of arguments for each thread
+
+    /* Check first argument provided */
+    if(argc < 2)
+    {
+        printf("No unmounting command provided!\n");
+        exit(1);
+    }
 
     /* Check if fuser is available in PATH */
     if(system("command -v fuser"))
