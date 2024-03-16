@@ -34,6 +34,30 @@ typedef struct
     struct t_args_t *args_array;  // array of all parameters of all threads
 } global_args_t;
 
+/* Enumerate all the possible outcomes of the unmount procedure */
+enum Outcome {
+    SUCCESS,  // unmounting was successful
+    THIS,     // the mount point is being used by this process
+    OTHER,    // the mount point is being used by other processes
+    FUSER,    // fuser command failed
+    PIDS,     // fuser can't find the pids of the processes using the mount point
+    KILL,     // the mount point is being used by other processes but the kill command failed
+    NOT_USED, // the mount point is not bieng used by any process
+    UNKNOWN,  // unknown error
+};
+
+/* Provide a different failure message for each possible outcome */
+const char *failure_messages[] = {
+    "",
+    "%s is being used by this process, can't unmount it!\n",
+    "%s is being used by other processes but fuser can't find the pids!\n",
+    "Failed to run fuser command, can't unmount %s!\n",
+    "Failed to get pids from fuser command, can't unmount %s!\n",
+    "Failed to kill processes using %s, can't unmount!\n",
+    "%s is not being used by any process but unmount operation failed!\n",
+    "Failed to unmount %s\n"
+};
+
 /* Contains all parameters passed to unmount_one() function */
 typedef struct t_args_t
 {
@@ -41,7 +65,7 @@ typedef struct t_args_t
     RC_STRING *path;              // path to unmount
     pthread_mutex_t unmounting;   // mutex locked until the path is unmounted
     global_args_t *global_args;   // parameters shared among all threads
-    int retval;                   // return value of the unmounting command
+    enum Outcome retval;          // return value of the unmounting command
 } thread_args_t;
 
 /* Pass arguments to a command and open standard output as readable file */
@@ -148,15 +172,16 @@ int populate_unmount_list(RC_STRINGLIST **list, int argc, char **argv)
 }
 
 int exec_unmount(char *command, char *mount_point){
-    int retry = 4;          // Effectively TERM, sleep 1, TERM, sleep 1, KILL, sleep 1
-    size_t len = 0;         // length of the line read
-    char *pids = NULL;      // line read from the fuser command
-    FILE *fp;               // file pointer to the output of the command
-    char *fuser_command;    // command to execute fuser and find the pids of the processes that use the mount point
-    char *kill_command;     // command to kill the processes that use the mount point
-    char signal[4];         // signal to send to the processes that use the mount point
-    int killcheck;          // return value of the kill command
-    char pidString[10];     // string to store the pid
+    int retry = 4;                  // Effectively TERM, sleep 1, TERM, sleep 1, KILL, sleep 1
+    size_t len = 0;                 // length of the line read
+    char *pids = NULL;              // line read from the fuser command
+    FILE *fp;                       // file pointer to the output of the command
+    char *fuser_command;            // command to execute fuser and find the pids of the processes that use the mount point
+    char *kill_command;             // command to kill the processes that use the mount point
+    char signal[4];                 // signal to send to the processes that use the mount point
+    int killcheck;                  // return value of the kill command
+    char pidString[10];             // string to store the pid
+    enum Outcome retVal = SUCCESS;  // return value of the function
 
     fuser_command = xmalloc((22 + strlen(mount_point)) * sizeof(char));     
     sprintf(fuser_command, "fuser -m %s 2>/dev/null", mount_point);
@@ -164,56 +189,54 @@ int exec_unmount(char *command, char *mount_point){
 
     while(system(command) != 0){
         fp = popen(fuser_command, "r");
-        if(fp == NULL)
-            printf("Failed to run fuser command, can't unmount anything!\n");
-            exit(1);
+        if(fp == NULL) {
+            retVal = FUSER;
+            break;
+        }
         if(getline(&pids, &len, fp) == -1){
-            printf("Failed to get pids from fuser command, can't unmount anything!\n");
-            exit(1);
+            retVal = NOT_USED;
+            break;
         }
         pid_t pid = getpid();
         sprintf(pidString, "%d", pid);
         if(strstr(pids, pidString) != NULL) {
-            printf("The mount point is being used by this process, can't unmount it!\n");
-            retry=0;
+            retVal = THIS;
+            break;
         }
-        else if(strcmp(pidString, " - ") == 0) {                                                 //Mount point is not being used by any process
-            retry=0;
+        else if(strcmp(pids, " - ") == 0) {                                                 //Mount point is not being used by any process
+            retVal = NOT_USED;
+            break;
         }
-        else if(strcmp(pidString, "  ") != 0) {                                                  //Mount point is being used by other processes but fuser can't find the pids
-            printf("The mount point is being used by other processes, can't unmount it!\n");
-            retry=0;
+        else if(strcmp(pids, "  ") != 0) {                                                  //Mount point is being used by other processes but fuser can't find the pids
+            retVal = OTHER;
+            break;
         }
         fclose(fp);
         retry--;
         if(retry <= 0){                                                                         //After 4 retries, return error
-            if(pids)
-                free(pids);
-            free(fuser_command);
-            free(kill_command);
-            return 1;
+            retVal = UNKNOWN;
+            break;
         }
         if(retry == 1)                                                                          //Kill processes if it's the last retry
             sprintf(kill_command, "fuser -KILL -k -m %s >/dev/null 2>&1", mount_point);
         else
             sprintf(kill_command, "fuser -TERM -k -m %s >/dev/null 2>&1", mount_point);
         killcheck = system(kill_command);
-        if(killcheck != 0 && retry > 1)
-            printf("Failed to terminate processes using the mount point. Retrying...\n");
-        else if(killcheck != 0 && retry == 1)
-            printf("Failed to kill processes using the mount point! Can't unmount!\n");
-            if(pids)
-                free(pids);
-            free(fuser_command);
-            free(kill_command);
-            return 1;
+        if(killcheck != 0 && retry == 1) {
+            retVal = KILL;
+            break;
+        }
         sleep(1);
     }
+
+    if(fp)
+        fclose(fp);
     if (pids)
         free(pids);
     free(fuser_command);
     free(kill_command);
-    return 0;
+    
+    return retVal;
 }
 
 /* Execute the unmount of the provided path */
@@ -254,7 +277,7 @@ void *unmount_one(void *input)
         if(system(check_command) == 0)
             args->retval = exec_unmount(command, args->path->value);    //TODO: pass the mount point instead of the command
         else
-            args->retval = 0;
+            args->retval = SUCCESS;
         pthread_mutex_unlock(&args->global_args->shared_lock);
     }
     else
@@ -337,9 +360,9 @@ int main(int argc, char **argv)
         pthread_join(threads[i], NULL);
         pthread_mutex_unlock(&args_array[i].unmounting);
         if (strstr(argv[1], "-r") != NULL)
-            eend(args_array[i].retval, "Failed to remount %s", args_array[i].path->value);
+            eend(args_array[i].retval, failure_messages[args_array[i].retval], args_array[i].path->value);
         else
-            eend(args_array[i].retval, "Failed to unmount %s", args_array[i].path->value);
+            eend(args_array[i].retval, failure_messages[args_array[i].retval], args_array[i].path->value);
     }
 
     /* Destroy mutexes */
