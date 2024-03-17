@@ -185,7 +185,7 @@ int exec_unmount(char *command, char *mount_point){
     f_kill = "-";
     #endif
 
-    fuser_command = xmalloc((90 + strlen(mount_point)) * sizeof(char));     
+    fuser_command = xmalloc((38 + strlen(f_opts) + strlen(mount_point)) * sizeof(char));     
     sprintf(fuser_command, "timeout -s KILL 5 fuser %s %s 2>/dev/null", f_opts, mount_point);
     kill_command = xmalloc((35 + strlen(mount_point)) * sizeof(char));
 
@@ -259,8 +259,8 @@ void *unmount_one(void *input)
     }
 
     /* Allocate memory and compose the unmount/remount command */
-    command = xmalloc((strlen(args->global_args->command) + strlen(args->path->value) + 2) * sizeof(char));
-    sprintf(command, "%s %s", args->global_args->command, args->path->value);
+    command = xmalloc((strlen(args->global_args->command) + strlen(args->path->value) + 14) * sizeof(char));
+    sprintf(command, "%s %s 2>/dev/null", args->global_args->command, args->path->value);
 
     /* If is a shared mount, avoid any other shared mount concurrency TODO: more granular control */
     if(rc_stringlist_find(args->global_args->shared, args->path->value)){
