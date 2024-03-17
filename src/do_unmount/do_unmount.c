@@ -306,6 +306,7 @@ int main(int argc, char **argv)
     pthread_t *threads;         // array of threads
     global_args_t global_args;  // arguments shared among all threads
     thread_args_t *args_array;  // array of arguments for each thread
+    int mainRetVal = 0;         // return value of the main function
 
     /* Check first argument provided */
     if(argc < 2)
@@ -362,6 +363,8 @@ int main(int argc, char **argv)
             eend(args_array[i].retval, failure_messages[args_array[i].retval], args_array[i].path->value);
         else
             eend(args_array[i].retval, failure_messages[args_array[i].retval], args_array[i].path->value);
+        if (args_array[i].retval == UNKNOWN)
+            mainRetVal = 1;
     }
 
     /* Destroy mutexes */
@@ -375,5 +378,5 @@ int main(int argc, char **argv)
     rc_stringlist_free(to_unmount);
     rc_stringlist_free(global_args.shared);
 
-    return 0;
+    return mainRetVal;
 }
