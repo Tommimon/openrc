@@ -295,7 +295,7 @@ void *unmount_one(void *input)
 /*
 * Handy program to handle all our unmounting needs
 * mountinfo is a C program to actually find our mounts on our supported OS's
-* We rely on fuser being present, so if it's not then don't unmount anything. TODO: do we need to check for fuser?
+* We rely on fuser being present, so if it's not then don't unmount anything.
 * This isn't a real issue for the BSD's, but it is for Linux.
 */
 int main(int argc, char **argv)
