@@ -177,9 +177,16 @@ int exec_unmount(char *command, char *mount_point){
     int killcheck;                  // return value of the kill command
     char pidString[10];             // string to store the pid
     enum Outcome retVal = SUCCESS;  // return value of the function
+    char *f_opts = "-m -c";         // fuser options
+    char *f_kill = "-s ";           // fuser kill options
+
+    #ifdef __linux__
+    f_opts = "-m";
+    f_kill = "-";
+    #endif
 
     fuser_command = xmalloc((90 + strlen(mount_point)) * sizeof(char));     
-    sprintf(fuser_command, "timeout -s KILL 5 fuser -m %s 2>/dev/null", mount_point);
+    sprintf(fuser_command, "timeout -s KILL 5 fuser %s %s 2>/dev/null", f_opts, mount_point);
     kill_command = xmalloc((35 + strlen(mount_point)) * sizeof(char));
 
     while(system(command) != 0){
@@ -206,9 +213,9 @@ int exec_unmount(char *command, char *mount_point){
             break;
         }
         if(retry == 1)                                                                          //Kill processes if it's the last retry
-            sprintf(kill_command, "fuser -KILL -k -m %s >/dev/null 2>&1", mount_point);
+            sprintf(kill_command, "fuser %sKILL -k %s \"%s\" >/dev/null 2>&1", f_kill, f_opts, mount_point);
         else
-            sprintf(kill_command, "fuser -TERM -k -m %s >/dev/null 2>&1", mount_point);
+            sprintf(kill_command, "fuser %sTERM -k %s \"%s\" >/dev/null 2>&1", f_kill, f_opts, mount_point);
         killcheck = system(kill_command);
         if(killcheck != 0 && retry == 1) {
             retVal = KILL;
