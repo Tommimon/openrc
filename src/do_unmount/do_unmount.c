@@ -171,16 +171,15 @@ int exec_unmount(char *command, char *mount_point){
     int retry = 4;                  // Effectively TERM, sleep 1, TERM, sleep 1, KILL, sleep 1
     size_t len = 0;                 // length of the line read
     char *pids = NULL;              // line read from the fuser command
-    FILE *fp;                       // file pointer to the output of the command
+    FILE *fp = NULL;                // file pointer to the output of the command
     char *fuser_command;            // command to execute fuser and find the pids of the processes that use the mount point
     char *kill_command;             // command to kill the processes that use the mount point
-    char signal[4];                 // signal to send to the processes that use the mount point
     int killcheck;                  // return value of the kill command
     char pidString[10];             // string to store the pid
     enum Outcome retVal = SUCCESS;  // return value of the function
 
-    fuser_command = xmalloc((22 + strlen(mount_point)) * sizeof(char));     
-    sprintf(fuser_command, "fuser -m %s 2>/dev/null", mount_point);
+    fuser_command = xmalloc((90 + strlen(mount_point)) * sizeof(char));     
+    sprintf(fuser_command, "timeout -s KILL 5 fuser -m %s 2>/dev/null", mount_point);
     kill_command = xmalloc((35 + strlen(mount_point)) * sizeof(char));
 
     while(system(command) != 0){
@@ -200,6 +199,7 @@ int exec_unmount(char *command, char *mount_point){
             break;
         }
         fclose(fp);
+        fp = NULL;
         retry--;
         if(retry <= 0){                                                                         //After 4 retries, return error
             retVal = UNKNOWN;
