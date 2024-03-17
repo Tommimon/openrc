@@ -179,14 +179,18 @@ int exec_unmount(char *command, char *mount_point){
     enum Outcome retVal = SUCCESS;  // return value of the function
     char *f_opts = "-m -c";         // fuser options
     char *f_kill = "-s ";           // fuser kill options
+    char* rc_fuser_timeout = getenv("rc_fuser_timeout");
 
     #ifdef __linux__
     f_opts = "-m";
     f_kill = "-";
     #endif
 
-    fuser_command = xmalloc((38 + strlen(f_opts) + strlen(mount_point)) * sizeof(char));     
-    sprintf(fuser_command, "timeout -s KILL 5 fuser %s %s 2>/dev/null", f_opts, mount_point);
+    if(rc_fuser_timeout == NULL)
+        rc_fuser_timeout = "60";
+
+    fuser_command = xmalloc((38 + strlen(rc_fuser_timeout) + strlen(f_opts) + strlen(mount_point)) * sizeof(char));     
+    sprintf(fuser_command, "timeout -s KILL %s fuser %s %s 2>/dev/null", rc_fuser_timeout, f_opts, mount_point);
     kill_command = xmalloc((35 + strlen(f_kill) + strlen(f_opts) + strlen(mount_point)) * sizeof(char));
 
     while(system(command) != 0){
