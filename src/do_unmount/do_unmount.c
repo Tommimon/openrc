@@ -47,11 +47,11 @@ enum Outcome {
 /* Provide a different failure message for each possible outcome */
 const char *failure_messages[] = {
     "",
-    "%s is being used by this process, can't unmount it!",
-    "%s is being used by other processes but fuser can't find the pids!",
-    "Failed to run fuser command, can't unmount %s!",
-    "Failed to kill processes using %s, can't unmount!",
-    "Failed to unmount %s"
+    "failed because we are using %s",
+    "in use but fuser finds nothing",
+    "in use but fuser command failed",
+    "in use but failed to kill process",
+    "failed",
 };
 
 /* Contains all parameters passed to unmount_one() function */
@@ -145,7 +145,7 @@ int populate_unmount_list(RC_STRINGLIST **list, int argc, char **argv)
     char path[4096]; // https://unix.stackexchange.com/questions/32795/what-is-the-maximum-allowed-filename-and-folder-size-with-ecryptfs
 
     /* Open the command for reading */
-    fp = popen_with_args("mountinfo", argc-2, argv+2);
+    fp = popen_with_args("mountinfo", argc-2, argv+2); // TODO: check if this is the correct way to pass arguments to the command
     if (fp == NULL)
     {
         printf("Failed to run mountinfo command, can't unmount anything!\n");
@@ -203,14 +203,14 @@ int exec_unmount(char *command, char *mount_point){
             retVal = OTHER;
             break;
         }
+        fclose(fp);
+        fp = NULL;
         pid_t pid = getpid();
         sprintf(pidString, "%d", pid);
         if(strstr(pids, pidString) != NULL) {
             retVal = THIS;
             break;
         }
-        fclose(fp);
-        fp = NULL;
         retry--;
         if(retry <= 0){                                                                         //After 4 retries, return error
             retVal = UNKNOWN;
@@ -266,7 +266,7 @@ void *unmount_one(void *input)
     command = xmalloc((strlen(args->global_args->command) + strlen(args->path->value) + 14) * sizeof(char));
     sprintf(command, "%s %s 2>/dev/null", args->global_args->command, args->path->value);
 
-    /* If is a shared mount, avoid any other shared mount concurrency TODO: more granular control */
+    /* If is a shared mount, avoid any other shared mount concurrency */
     if(rc_stringlist_find(args->global_args->shared, args->path->value)){
         /* Allocate memory and compose the check command */
         check_command = xmalloc((19 + strlen(args->path->value)) * sizeof(char));
@@ -274,7 +274,7 @@ void *unmount_one(void *input)
         pthread_mutex_lock(&args->global_args->shared_lock);
         /* Unmount only if is still mounted */
         if(system(check_command) == 0)
-            args->retval = exec_unmount(command, args->path->value);    //TODO: pass the mount point instead of the command
+            args->retval = exec_unmount(command, args->path->value);
         else
             args->retval = SUCCESS;
         pthread_mutex_unlock(&args->global_args->shared_lock);
