@@ -40,9 +40,7 @@ enum Outcome {
     THIS,     // the mount point is being used by this process
     OTHER,    // the mount point is being used by other processes
     FUSER,    // fuser command failed
-    PIDS,     // fuser can't find the pids of the processes using the mount point
     KILL,     // the mount point is being used by other processes but the kill command failed
-    NOT_USED, // the mount point is not bieng used by any process
     UNKNOWN,  // unknown error
 };
 
@@ -52,9 +50,7 @@ const char *failure_messages[] = {
     "%s is being used by this process, can't unmount it!\n",
     "%s is being used by other processes but fuser can't find the pids!\n",
     "Failed to run fuser command, can't unmount %s!\n",
-    "Failed to get pids from fuser command, can't unmount %s!\n",
     "Failed to kill processes using %s, can't unmount!\n",
-    "%s is not being used by any process but unmount operation failed!\n",
     "Failed to unmount %s\n"
 };
 
@@ -194,21 +190,13 @@ int exec_unmount(char *command, char *mount_point){
             break;
         }
         if(getline(&pids, &len, fp) == -1){
-            retVal = NOT_USED;
+            retVal = OTHER;
             break;
         }
         pid_t pid = getpid();
         sprintf(pidString, "%d", pid);
         if(strstr(pids, pidString) != NULL) {
             retVal = THIS;
-            break;
-        }
-        else if(strcmp(pids, " - ") == 0) {                                                 //Mount point is not being used by any process
-            retVal = NOT_USED;
-            break;
-        }
-        else if(strcmp(pids, "  ") != 0) {                                                  //Mount point is being used by other processes but fuser can't find the pids
-            retVal = OTHER;
             break;
         }
         fclose(fp);
