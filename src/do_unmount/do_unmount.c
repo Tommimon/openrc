@@ -187,7 +187,7 @@ int exec_unmount(char *command, char *mount_point){
 
     fuser_command = xmalloc((38 + strlen(f_opts) + strlen(mount_point)) * sizeof(char));     
     sprintf(fuser_command, "timeout -s KILL 5 fuser %s %s 2>/dev/null", f_opts, mount_point);
-    kill_command = xmalloc((35 + strlen(mount_point)) * sizeof(char));
+    kill_command = xmalloc((35 + strlen(f_kill) + strlen(f_opts) + strlen(mount_point)) * sizeof(char));
 
     while(system(command) != 0){
         fp = popen(fuser_command, "r");
