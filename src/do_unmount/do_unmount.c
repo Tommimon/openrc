@@ -47,11 +47,11 @@ enum Outcome {
 /* Provide a different failure message for each possible outcome */
 const char *failure_messages[] = {
     "",
-    "%s is being used by this process, can't unmount it!\n",
-    "%s is being used by other processes but fuser can't find the pids!\n",
-    "Failed to run fuser command, can't unmount %s!\n",
-    "Failed to kill processes using %s, can't unmount!\n",
-    "Failed to unmount %s\n"
+    "%s is being used by this process, can't unmount it!",
+    "%s is being used by other processes but fuser can't find the pids!",
+    "Failed to run fuser command, can't unmount %s!",
+    "Failed to kill processes using %s, can't unmount!",
+    "Failed to unmount %s"
 };
 
 /* Contains all parameters passed to unmount_one() function */
@@ -311,7 +311,7 @@ int main(int argc, char **argv)
     }
 
     /* Check if fuser is available in PATH */
-    if(system("command -v fuser"))
+    if(system("command -v fuser >/dev/null 2>&1"))
     {
         printf("fuser is not installed, can't unmount anything!\n");
         exit(1);
