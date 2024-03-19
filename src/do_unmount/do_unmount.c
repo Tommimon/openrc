@@ -96,8 +96,8 @@ void populate_shared_list(RC_STRINGLIST **list) {
     FILE *fp;               // file pointer to the mountinfo file
     size_t len = 0;         // length of the line read
     char *line = NULL;      // line read from the mountinfo file
-    char *token;            // token of the current line
-    char *path[4096];       // path to relative to the current line
+    char *token = NULL;     // token of the current line, no need to free this since is pointing to the original string
+    char *path = NULL;      // path to relative to the current line
     int i;                  // iterator
 
     /* Initialize list */
@@ -119,7 +119,7 @@ void populate_shared_list(RC_STRINGLIST **list) {
             if (i == 4)
             {
                 /* Copy token into path */
-                strcpy(path, token);
+                xasprintf(path, "%s", token);
             }
             // if token contains "shared:" TODO: check if this is the correct way to check for shared mounts
             if (strstr(token, "shared:") != NULL)
@@ -133,17 +133,21 @@ void populate_shared_list(RC_STRINGLIST **list) {
 
     /* Close file and free memory */
     fclose(fp);
-    if (line)
+    if(line)
         free(line);
+    if(path)
+        free(path);
     #endif
 }
 
 /* Pass arguments to mountinfo and store output in a list of paths to unmount */
 int populate_unmount_list(RC_STRINGLIST **list, int argc, char **argv)
 {
-    int size;        // number of paths to unmount
-    FILE *fp;        // file pointer to the output of the command
-    char path[4096]; // https://unix.stackexchange.com/questions/32795/what-is-the-maximum-allowed-filename-and-folder-size-with-ecryptfs
+    int size = 0,       // number of paths to unmount
+    FILE *fp;           // file pointer to the output of the command
+    char *path = NULL;  // path to add to the list
+    size_t len = 0;     // length of the line read
+
 
     /* Open the command for reading */
     fp = popen_with_args("mountinfo", argc-2, argv+2);
@@ -154,9 +158,8 @@ int populate_unmount_list(RC_STRINGLIST **list, int argc, char **argv)
     }
 
     *list = rc_stringlist_new();
-    size = 0;
     /* Read the output a line at a time */
-    while (fgets(path, sizeof(path), fp) != NULL)
+    while (getline(&path, &len, fp) != -1)
     {
         path[strlen(path) - 1] = '\0'; // remove trailing '\n'
         rc_stringlist_add(*list, path);
@@ -164,7 +167,8 @@ int populate_unmount_list(RC_STRINGLIST **list, int argc, char **argv)
     }
 
     pclose(fp);
-
+    if(path)
+        free(path);
     return size;
 }
 
