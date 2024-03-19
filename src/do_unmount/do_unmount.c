@@ -70,9 +70,9 @@ FILE *popen_with_args(const char *command, int argc, char **argv) {
     FILE *fp;   // file pointer to the output of the command
 
     /* Calculate the length of the command */
-    length = strlen(command) + 1; // +1 for the null terminator
+    length = strlen(command) + 1; /* +1 for the null terminator */
     for (i = 0; i < argc; i++)
-        length += strlen(argv[i]) + 3; // +3 for the quotes and space
+        length += strlen(argv[i]) + 3; /* +3 for the quotes and space */
     
     /* Allocate memory for the command */
     cmd = xmalloc(length * sizeof(char));
@@ -159,7 +159,7 @@ int populate_unmount_list(RC_STRINGLIST **list, int argc, char **argv)
     /* Read the output a line at a time */
     while (getline(&path, &len, fp) != -1)
     {
-        path[strlen(path) - 1] = '\0'; // remove trailing '\n'
+        path[strlen(path) - 1] = '\0'; /* remove trailing '\n' */
         rc_stringlist_add(*list, path);
         size++;
     }
@@ -307,7 +307,7 @@ int main(int argc, char **argv)
     pthread_t *threads;         // array of threads
     global_args_t global_args;  // arguments shared among all threads
     thread_args_t *args_array;  // array of arguments for each thread
-    int exitCode = 0;         // return value of the main function
+    int exitCode = 0;           // return value of the main function
 
     /* Check first argument provided */
     if(argc < 2)
@@ -334,7 +334,7 @@ int main(int argc, char **argv)
     args_array = xmalloc(size * sizeof(thread_args_t));
 
     /* Initialize global arguments */
-    global_args.command = argv[1];// Assuming argv[1] is the unmounting command
+    global_args.command = argv[1];  /* Assuming argv[1] is the unmounting command */
     pthread_mutex_init(&global_args.shared_lock, NULL);
     global_args.args_array = args_array;
 
