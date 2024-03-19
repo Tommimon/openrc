@@ -119,8 +119,8 @@ void populate_shared_list(RC_STRINGLIST **list) {
                 /* Copy token into path */
                 xasprintf(path, "%s", token);
             }
-            // if token contains "shared:" TODO: check if this is the correct way to check for shared mounts
-            if (strstr(token, "shared:") != NULL)
+            /* if token contains "shared:", note that if there is no optional field this token will be the separator character '-' */
+            else if (i == 6 && strstr(token, "shared:") != NULL)
             {
                 rc_stringlist_add(*list, path);
             }
