@@ -168,30 +168,28 @@ int populate_unmount_list(RC_STRINGLIST **list, int argc, char **argv)
 }
 
 int exec_unmount(char *command, char *mount_point){
-    int retry = 4;                  // Effectively TERM, sleep 1, TERM, sleep 1, KILL, sleep 1
-    size_t len = 0;                 // length of the line read
-    char *pids = NULL;              // line read from the fuser command
-    FILE *fp = NULL;                // file pointer to the output of the command
-    char *fuser_command;            // command to execute fuser and find the pids of the processes that use the mount point
-    char *kill_command;             // command to kill the processes that use the mount point
-    int killcheck;                  // return value of the kill command
-    char pidString[10];             // string to store the pid
-    enum Outcome retVal = SUCCESS;  // return value of the function
-    char *f_opts = "-m -c";         // fuser options
-    char *f_kill = "-s ";           // fuser kill options
-    char* rc_fuser_timeout = getenv("rc_fuser_timeout");
+    int retry = 4;                                  // Effectively TERM, sleep 1, TERM, sleep 1, KILL, sleep 1
+    size_t len = 0;                                 // length of the line read
+    char *pids = NULL;                              // line read from the fuser command
+    FILE *fp = NULL;                                // file pointer to the output of the command
+    char *fuser_command;                            // command to execute fuser and find the pids of the processes that use the mount point
+    char *kill_command;                             // command to kill the processes that use the mount point
+    char pidString[8];                              // string to store the pid (max value is 4194304 source https://unix.stackexchange.com/questions/16883/what-is-the-maximum-value-of-the-process-id)
+    enum Outcome retVal = SUCCESS;                  // return value of the function
+    char *f_opts = "-m -c";                         // fuser options
+    char *f_kill = "-s ";                           // fuser kill options
+    char* timeout = getenv("rc_fuser_timeout");     // fuser timeout
 
     #ifdef __linux__
     f_opts = "-m";
     f_kill = "-";
     #endif
 
-    if(rc_fuser_timeout == NULL)
-        rc_fuser_timeout = "60";
+    if(timeout == NULL)
+        timeout = "60";
 
-    fuser_command = xmalloc((38 + strlen(rc_fuser_timeout) + strlen(f_opts) + strlen(mount_point)) * sizeof(char));     
-    sprintf(fuser_command, "timeout -s KILL %s fuser %s %s 2>/dev/null", rc_fuser_timeout, f_opts, mount_point);
-    kill_command = xmalloc((35 + strlen(f_kill) + strlen(f_opts) + strlen(mount_point)) * sizeof(char));
+    xasprintf(fuser_command, "timeout -s KILL %s fuser %s %s 2>/dev/null", timeout, f_opts, mount_point);
+    xasprintf(kill_command, "fuser %sTERM -k %s \"%s\" >/dev/null 2>&1", f_kill, f_opts, mount_point);
 
     while(system(command) != 0){
         fp = popen(fuser_command, "r");
@@ -212,16 +210,13 @@ int exec_unmount(char *command, char *mount_point){
             break;
         }
         retry--;
-        if(retry <= 0){                                                                         //After 4 retries, return error
+        if(retry <= 0){         //After 4 retries, return error
             retVal = UNKNOWN;
             break;
         }
-        if(retry == 1)                                                                          //Kill processes if it's the last retry
-            sprintf(kill_command, "fuser %sKILL -k %s \"%s\" >/dev/null 2>&1", f_kill, f_opts, mount_point);
-        else
-            sprintf(kill_command, "fuser %sTERM -k %s \"%s\" >/dev/null 2>&1", f_kill, f_opts, mount_point);
-        killcheck = system(kill_command);
-        if(killcheck != 0 && retry == 1) {
+        if(retry == 1)                                                                                          //Kill processes if it's the last retry
+            sprintf(kill_command, "fuser %sKILL -k %s \"%s\" >/dev/null 2>&1", f_kill, f_opts, mount_point);    // No need to reallocate since length is the same
+        if(system(kill_command) != 0 && retry == 1) {
             retVal = KILL;
             break;
         }
@@ -263,14 +258,12 @@ void *unmount_one(void *input)
     }
 
     /* Allocate memory and compose the unmount/remount command */
-    command = xmalloc((strlen(args->global_args->command) + strlen(args->path->value) + 14) * sizeof(char));
-    sprintf(command, "%s %s 2>/dev/null", args->global_args->command, args->path->value);
+    xasprintf(command, "%s %s 2>/dev/null", args->global_args->command, args->path->value);
 
     /* If is a shared mount, avoid any other shared mount concurrency */
     if(rc_stringlist_find(args->global_args->shared, args->path->value)){
         /* Allocate memory and compose the check command */
-        check_command = xmalloc((19 + strlen(args->path->value)) * sizeof(char));
-        sprintf(check_command, "mountinfo --quiet %s", args->path->value);
+        xasprintf(check_command, "mountinfo --quiet %s", args->path->value);
         pthread_mutex_lock(&args->global_args->shared_lock);
         /* Unmount only if is still mounted */
         if(system(check_command) == 0)
