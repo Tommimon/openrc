@@ -91,6 +91,7 @@ FILE *popen_with_args(const char *command, int argc, char **argv) {
     return popen(cmd, "r");;
 }
 
+/* Populate the list of shared mounts in the system */
 void populate_shared_list(RC_STRINGLIST **list) {
     FILE *fp;               // file pointer to the mountinfo file
     size_t len = 0;         // length of the line read
@@ -145,7 +146,7 @@ int populate_unmount_list(RC_STRINGLIST **list, int argc, char **argv)
     char path[4096]; // https://unix.stackexchange.com/questions/32795/what-is-the-maximum-allowed-filename-and-folder-size-with-ecryptfs
 
     /* Open the command for reading */
-    fp = popen_with_args("mountinfo", argc-2, argv+2); // TODO: check if this is the correct way to pass arguments to the command
+    fp = popen_with_args("mountinfo", argc-2, argv+2);
     if (fp == NULL)
     {
         printf("Failed to run mountinfo command, can't unmount anything!\n");
@@ -167,7 +168,8 @@ int populate_unmount_list(RC_STRINGLIST **list, int argc, char **argv)
     return size;
 }
 
-int exec_unmount(char *command, char *mount_point){
+/* If unmount command fails terminate the programs using it and retry */
+int unmount_with_retries(char *command, char *mount_point){
     int retry = 4;                                  // Effectively TERM, sleep 1, TERM, sleep 1, KILL, sleep 1
     size_t len = 0;                                 // length of the line read
     char *pids = NULL;                              // line read from the fuser command
@@ -185,12 +187,15 @@ int exec_unmount(char *command, char *mount_point){
     f_kill = "-";
     #endif
 
+    /* Default timeout value if environment variable is not set */
     if(timeout == NULL)
         timeout = "60";
 
+    /* Allocate memory for the commands */
     xasprintf(fuser_command, "timeout -s KILL %s fuser %s %s 2>/dev/null", timeout, f_opts, mount_point);
     xasprintf(kill_command, "fuser %sTERM -k %s \"%s\" >/dev/null 2>&1", f_kill, f_opts, mount_point);
 
+    /* Execute the unmount command, send term/kill signal and retry if it fails */
     while(system(command) != 0){
         fp = popen(fuser_command, "r");
         if(fp == NULL) {
@@ -205,24 +210,25 @@ int exec_unmount(char *command, char *mount_point){
         fp = NULL;
         pid_t pid = getpid();
         sprintf(pidString, "%d", pid);
-        if(strstr(pids, pidString) != NULL) {
+        if(strstr(pids, pidString) != NULL) {   /* Check if the current process is using the mount point */
             retVal = THIS;
             break;
         }
         retry--;
-        if(retry <= 0){         //After 4 retries, return error
+        if(retry <= 0){     /* After 4 retries, return error */
             retVal = UNKNOWN;
             break;
         }
-        if(retry == 1)                                                                                          //Kill processes if it's the last retry
-            sprintf(kill_command, "fuser %sKILL -k %s \"%s\" >/dev/null 2>&1", f_kill, f_opts, mount_point);    // No need to reallocate since length is the same
-        if(system(kill_command) != 0 && retry == 1) {
+        if(retry == 1)                                                                                          /* Kill processes if it's the last retry */
+            sprintf(kill_command, "fuser %sKILL -k %s \"%s\" >/dev/null 2>&1", f_kill, f_opts, mount_point);    /* No need to reallocate since length is the same */
+        if(system(kill_command) != 0 && retry == 1) {   /* If the kill command fails, return error */
             retVal = KILL;
             break;
         }
         sleep(1);
     }
 
+    /* Free memory and close file */
     if(fp)
         fclose(fp);
     if (pids)
@@ -267,7 +273,7 @@ void *unmount_one(void *input)
         pthread_mutex_lock(&args->global_args->shared_lock);
         /* Unmount only if is still mounted */
         if(system(check_command) == 0)
-            args->retval = exec_unmount(command, args->path->value);
+            args->retval = unmount_with_retries(command, args->path->value);
         else
             args->retval = SUCCESS;
         pthread_mutex_unlock(&args->global_args->shared_lock);
@@ -275,7 +281,7 @@ void *unmount_one(void *input)
     else
     {
         /* Unmount the path */
-        args->retval = exec_unmount(command, args->path->value);
+        args->retval = unmount_with_retries(command, args->path->value);
     }
 
     /* Free memory */
@@ -299,7 +305,7 @@ int main(int argc, char **argv)
     pthread_t *threads;         // array of threads
     global_args_t global_args;  // arguments shared among all threads
     thread_args_t *args_array;  // array of arguments for each thread
-    int mainRetVal = 0;         // return value of the main function
+    int exitCode = 0;         // return value of the main function
 
     /* Check first argument provided */
     if(argc < 2)
@@ -343,7 +349,7 @@ int main(int argc, char **argv)
         i++;
     }
 
-    /* Wait for all threads to finish and long info */
+    /* Wait for all threads to finish and long info with the proper failure message */
     for (i = 0; i < size; i++)
     {
         if (strstr(argv[1], "-r") != NULL)
@@ -357,7 +363,7 @@ int main(int argc, char **argv)
         else
             eend(args_array[i].retval, failure_messages[args_array[i].retval], args_array[i].path->value);
         if (args_array[i].retval == UNKNOWN)
-            mainRetVal = 1;
+            exitCode = 1;     /* Set exit code to 1 because this should never happen */
     }
 
     /* Destroy mutexes */
@@ -371,5 +377,5 @@ int main(int argc, char **argv)
     rc_stringlist_free(to_unmount);
     rc_stringlist_free(global_args.shared);
 
-    return mainRetVal;
+    return exitCode;
 }
