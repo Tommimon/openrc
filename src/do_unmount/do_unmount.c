@@ -14,6 +14,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <unistd.h>
 
 #include "helpers.h"
 #include "einfo.h"
@@ -143,7 +144,7 @@ void populate_shared_list(RC_STRINGLIST **list) {
 /* Pass arguments to mountinfo and store output in a list of paths to unmount */
 int populate_unmount_list(RC_STRINGLIST **list, int argc, char **argv)
 {
-    int size = 0,       // number of paths to unmount
+    int size = 0;       // number of paths to unmount
     FILE *fp;           // file pointer to the output of the command
     char *path = NULL;  // path to add to the list
     size_t len = 0;     // length of the line read
