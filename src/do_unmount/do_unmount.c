@@ -36,10 +36,10 @@ typedef struct
 enum Outcome {
     SUCCESS,  // unmounting was successful
     THIS,     // the mount point is being used by this process
-    OTHER,    // the mount point is being used by other processes
+    UNKNOWN,  // the mount point is being used but processes can't be found
     FUSER,    // fuser command failed
     KILL,     // the mount point is being used by other processes but the kill command failed
-    UNKNOWN,  // unknown error
+    ERROR,    // unknown error
 };
 
 /* Provide a different failure message for each possible outcome */
@@ -67,7 +67,6 @@ FILE *popen_with_args(const char *command, int argc, char **argv) {
     char *cmd;  // command with all arguments
     int length; // length of the command with all arguments
     int i;      // iterator
-    FILE *fp;   // file pointer to the output of the command
 
     /* Calculate the length of the command */
     length = strlen(command) + 1; /* +1 for the null terminator */
@@ -96,7 +95,7 @@ void populate_shared_list(RC_STRINGLIST **list) {
     char *line = NULL;      // line read from the mountinfo file
     char *token = NULL;     // token of the current line, no need to free this since is pointing to the original string
     char *path = NULL;      // path to relative to the current line
-    int i;                  // iterator
+    int i;                  // fields iterator
 
     /* Initialize list */
     *list = rc_stringlist_new();
@@ -119,7 +118,7 @@ void populate_shared_list(RC_STRINGLIST **list) {
                 /* Copy token into path */
                 xasprintf(path, "%s", token);
             }
-            /* if token contains "shared:", note that if there is no optional field this token will be the separator character '-' */
+            /* If token contains "shared:", note that if there is no optional field this token will be the separator character '-' */
             else if (i == 6 && strstr(token, "shared:") != NULL)
             {
                 rc_stringlist_add(*list, path);
@@ -159,7 +158,7 @@ int populate_unmount_list(RC_STRINGLIST **list, int argc, char **argv)
     /* Read the output a line at a time */
     while (getline(&path, &len, fp) != -1)
     {
-        path[strlen(path) - 1] = '\0'; /* remove trailing '\n' */
+        path[strlen(path) - 1] = '\0'; /* Remove trailing '\n' */
         rc_stringlist_add(*list, path);
         size++;
     }
@@ -172,7 +171,7 @@ int populate_unmount_list(RC_STRINGLIST **list, int argc, char **argv)
 
 /* If unmount command fails terminate the programs using it and retry */
 int unmount_with_retries(char *command, char *mount_point){
-    int retry = 4;                                  // Effectively TERM, sleep 1, TERM, sleep 1, KILL, sleep 1
+    int retry = 4;                                  // effectively TERM, sleep 1, TERM, sleep 1, KILL, sleep 1
     size_t len = 0;                                 // length of the line read
     char *pids = NULL;                              // line read from the fuser command
     FILE *fp = NULL;                                // file pointer to the output of the command
@@ -205,7 +204,7 @@ int unmount_with_retries(char *command, char *mount_point){
             break;
         }
         if(getline(&pids, &len, fp) == -1){
-            retVal = OTHER;
+            retVal = UNKNOWN;
             break;
         }
         fclose(fp);
@@ -218,7 +217,7 @@ int unmount_with_retries(char *command, char *mount_point){
         }
         retry--;
         if(retry <= 0){     /* After 4 retries, return error */
-            retVal = UNKNOWN;
+            retVal = ERROR;
             break;
         }
         if(retry == 1)                                                                                          /* Kill processes if it's the last retry */
@@ -364,7 +363,7 @@ int main(int argc, char **argv)
             eend(args_array[i].retval, failure_messages[args_array[i].retval], args_array[i].path->value);
         else
             eend(args_array[i].retval, failure_messages[args_array[i].retval], args_array[i].path->value);
-        if (args_array[i].retval == UNKNOWN)
+        if (args_array[i].retval == ERROR)
             exitCode = 1;     /* Set exit code to 1 because this should never happen */
     }
 
