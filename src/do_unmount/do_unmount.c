@@ -64,6 +64,7 @@ typedef struct t_args_t
 
 /* Pass arguments to a command and open standard output as readable file */
 FILE *popen_with_args(const char *command, int argc, char **argv) {
+    FILE *fp;   // file pointer to program output
     char *cmd;  // command with all arguments
     int length; // length of the command with all arguments
     int i;      // iterator
@@ -84,8 +85,10 @@ FILE *popen_with_args(const char *command, int argc, char **argv) {
         strcat(cmd, "\"");
     }
 
-    /* Open the command and return output file descriptor for reading */
-    return popen(cmd, "r");;
+    /* Open the command, free memory and return output file pointer for reading */
+    fp = popen(cmd, "r");;
+    free(cmd);
+    return fp;
 }
 
 /* Populate the list of shared mounts in the system */
