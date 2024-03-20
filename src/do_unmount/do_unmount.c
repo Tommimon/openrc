@@ -46,7 +46,7 @@ enum Outcome {
 /* Provide a different failure message for each possible outcome */
 const char *failure_messages[] = {
     "",
-    "failed because we are using %s",
+    "failed because we are using",
     "in use but fuser finds nothing",
     "in use but fuser command failed",
     "in use but failed to kill process",
@@ -183,9 +183,9 @@ static int unmount_with_retries(char *command, char *mount_point){
     char *kill_command;                             // command to kill the processes that use the mount point
     char pidString[8];                              // string to store the pid (max value is 4194304 source https://unix.stackexchange.com/questions/16883/what-is-the-maximum-value-of-the-process-id)
     enum Outcome retVal = SUCCESS;                  // return value of the function
-    char *f_opts = "-m -c";                         // fuser options
-    char *f_kill = "-s ";                           // fuser kill options
-    char* timeout = getenv("rc_fuser_timeout");     // fuser timeout
+    const char *f_opts = "-m -c";                         // fuser options
+    const char *f_kill = "-s ";                           // fuser kill options
+    const char* timeout = getenv("rc_fuser_timeout");     // fuser timeout
 
     #ifdef __linux__
     f_opts = "-m";
@@ -213,8 +213,7 @@ static int unmount_with_retries(char *command, char *mount_point){
         }
         fclose(fp);
         fp = NULL;
-        pid_t pid = getpid();
-        sprintf(pidString, "%d", pid);
+        sprintf(pidString, "%d", getpid());
         if(strstr(pids, pidString) != NULL) {   /* Check if the current process is using the mount point */
             retVal = THIS;
             break;
@@ -363,10 +362,10 @@ int main(int argc, char **argv)
             ebegin("Unmounting %s", args_array[i].path->value);
         pthread_join(threads[i], NULL);
         pthread_mutex_unlock(&args_array[i].unmounting);
-        if (strstr(argv[1], "-r") != NULL)
-            eend(args_array[i].retval, failure_messages[args_array[i].retval], args_array[i].path->value);
+        if (args_array[i].retval == THIS)
+            eend(args_array[i].retval, "%s %s", failure_messages[args_array[i].retval], args_array[i].path->value);
         else
-            eend(args_array[i].retval, failure_messages[args_array[i].retval], args_array[i].path->value);
+            eend(args_array[i].retval, "%s", failure_messages[args_array[i].retval]);
         if (args_array[i].retval == ERROR)
             exitCode = 1;     /* Set exit code to 1 because this should never happen */
     }
