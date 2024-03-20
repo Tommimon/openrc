@@ -21,6 +21,16 @@
 #include "queue.h"
 #include "rc.h"
 
+/* Provide a different failure message for each possible outcome */
+const char *failure_messages[] = {
+    "",
+    "failed because we are using",          // THIS
+    "in use but fuser finds nothing",       // UNKNOWN
+    "in use but fuser command failed",      // FUSER
+    "in use but failed to kill process",    // KILL
+    "failed",                               // ERROR
+};
+
 /* Forward declaration to solve circular dependency */
 struct t_args_t;
 
@@ -42,19 +52,8 @@ typedef enum {
     ERROR,    // unknown error
 } outcome_t;
 
-/* Provide a different failure message for each possible outcome */
-const char *failure_messages[] = {
-    "",
-    "failed because we are using",
-    "in use but fuser finds nothing",
-    "in use but fuser command failed",
-    "in use but failed to kill process",
-    "failed",
-};
-
 /* Contains all parameters passed to unmount_one() function */
-typedef struct t_args_t
-{
+typedef struct t_args_t {
     int index;                    // index of the path in the list
     RC_STRING *path;              // path to unmount
     pthread_mutex_t unmounting;   // mutex locked until the path is unmounted
@@ -62,7 +61,8 @@ typedef struct t_args_t
 } thread_args_t;
 
 /* Pass arguments as vector of string to a command and open standard output as readable file */
-static FILE *popen_vec(const char *command, int argc, char **argv) {
+static FILE *popen_vec(const char *command, int argc, char **argv)
+{
     FILE *fp;   // file pointer to program output
     char *cmd;  // command with all arguments
     int length; // length of the command with all arguments
@@ -91,7 +91,8 @@ static FILE *popen_vec(const char *command, int argc, char **argv) {
 }
 
 /* Populate the list of shared mounts in the system */
-static void populate_shared_list(RC_STRINGLIST **list) {
+static void populate_shared_list(RC_STRINGLIST **list)
+{
     FILE *fp;               // file pointer to the mountinfo file
     size_t len = 0;         // length of the line read
     char *line = NULL;      // line read from the mountinfo file
@@ -116,15 +117,9 @@ static void populate_shared_list(RC_STRINGLIST **list) {
         i = 0;
         while (token != NULL) {
             if (i == 4)
-            {
-                /* Copy token into path */
-                xasprintf(&path, "%s", token);
-            }
-            /* If token contains "shared:", note that if there is no optional field this token will be the separator character '-' */
-            else if (i == 6 && strstr(token, "shared:") != NULL)
-            {
-                rc_stringlist_add(*list, path);
-            }
+                xasprintf(&path, "%s", token);  /* Copy token into path */
+            else if (i == 6 && strstr(token, "shared:") != NULL) /* If token contains "shared:" */
+                rc_stringlist_add(*list, path);                  /* Note: if there is no optional field this token will be the separator character '-' */
             token = strtok(NULL, " ");
             i++;
         }
@@ -150,16 +145,14 @@ static int populate_unmount_list(RC_STRINGLIST **list, int argc, char **argv)
 
     /* Open the command for reading */
     fp = popen_vec("mountinfo", argc-2, argv+2);
-    if (fp == NULL)
-    {
+    if (fp == NULL) {
         printf("Failed to run mountinfo command, can't unmount anything!\n");
         exit(1);
     }
 
     *list = rc_stringlist_new();
     /* Read the output a line at a time */
-    while (getline(&path, &len, fp) != -1)
-    {
+    while (getline(&path, &len, fp) != -1) {
         path[strlen(path) - 1] = '\0'; /* Remove trailing '\n' */
         if(strstr(path, "/proc") == NULL) {
         rc_stringlist_add(*list, path);
@@ -174,18 +167,19 @@ static int populate_unmount_list(RC_STRINGLIST **list, int argc, char **argv)
 }
 
 /* If unmount command fails terminate the programs using it and retry */
-static int unmount_with_retries(char *command, char *mount_point){
-    int retry = 4;                                  // effectively TERM, sleep 1, TERM, sleep 1, KILL, sleep 1
-    size_t len = 0;                                 // length of the line read
-    char *pids = NULL;                              // line read from the fuser command
-    FILE *fp = NULL;                                // file pointer to the output of the command
-    char *fuser_command;                            // command to execute fuser and find the pids of the processes that use the mount point
-    char *kill_command;                             // command to kill the processes that use the mount point
-    char pidString[8];                              // string to store the pid (max value is 4194304 source https://unix.stackexchange.com/questions/16883/what-is-the-maximum-value-of-the-process-id)
-    outcome_t retVal = SUCCESS;                  // return value of the function
-    const char *f_opts = "-m -c";                         // fuser options
-    const char *f_kill = "-s ";                           // fuser kill options
-    const char* timeout = getenv("rc_fuser_timeout");     // fuser timeout
+static int unmount_with_retries(char *command, char *mount_point)
+{
+    int retry = 4;                                      // effectively TERM, sleep 1, TERM, sleep 1, KILL, sleep 1
+    size_t len = 0;                                     // length of the line read
+    char *pids = NULL;                                  // line read from the fuser command
+    FILE *fp = NULL;                                    // file pointer to the output of the command
+    char *fuser_command;                                // command to execute fuser and find the pids of the processes that use the mount point
+    char *kill_command;                                 // command to kill the processes that use the mount point
+    char pidString[8];                                  // string to store the pid (max value is 4194304 source https://unix.stackexchange.com/questions/16883/what-is-the-maximum-value-of-the-process-id)
+    outcome_t retVal = SUCCESS;                         // return value of the function
+    const char *f_opts = "-m -c";                       // fuser options
+    const char *f_kill = "-s ";                         // fuser kill options
+    const char* timeout = getenv("rc_fuser_timeout");   // fuser timeout
 
     #ifdef __linux__
     f_opts = "-m";
@@ -201,13 +195,13 @@ static int unmount_with_retries(char *command, char *mount_point){
     xasprintf(&kill_command, "fuser %sTERM -k %s \"%s\" >/dev/null 2>&1", f_kill, f_opts, mount_point);
 
     /* Execute the unmount command, send term/kill signal and retry if it fails */
-    while(system(command) != 0){
+    while(system(command) != 0) {
         fp = popen(fuser_command, "r");
         if(fp == NULL) {
             retVal = FUSER;
             break;
         }
-        if(getline(&pids, &len, fp) == -1){
+        if(getline(&pids, &len, fp) == -1) {
             retVal = UNKNOWN;
             break;
         }
@@ -219,7 +213,7 @@ static int unmount_with_retries(char *command, char *mount_point){
             break;
         }
         retry--;
-        if(retry <= 0){     /* After 4 retries, return error */
+        if(retry <= 0) {     /* After 4 retries, return error */
             retVal = ERROR;
             break;
         }
@@ -251,7 +245,7 @@ static void *unmount_one(void *input)
     char *command;                                 // command to execute
     char *check_command;                           // command to check mountpoint existence
     int i, j;                                      // iterators
-    outcome_t* pRetval;                         // return value of the unmount with retries phase
+    outcome_t* pRetval;                            // return value of the unmount with retries phase
 
     /* Allocate and initialize return value */
     pRetval = xmalloc(sizeof(outcome_t));
@@ -259,13 +253,11 @@ static void *unmount_one(void *input)
 
     /* Check all previous paths in the list for children */
     prev = args->path;
-    for (i = args->index - 1; i >= 0; i--)
-    {
+    for (i = args->index - 1; i >= 0; i--) {
         prev = TAILQ_PREV(prev, rc_stringlist, entries);
         /* If the first different char is a '/' then we have a child */
         for (j = 0; args->path->value[j] == prev->value[j]; j++);
-        if (prev->value[j] == '/')
-        {
+        if (prev->value[j] == '/') {
             /* Wait for child to unmount (wait for mutex to be available) */
             pthread_mutex_lock(&args->global_args->args_array[i].unmounting);
             pthread_mutex_unlock(&args->global_args->args_array[i].unmounting);
@@ -276,7 +268,7 @@ static void *unmount_one(void *input)
     xasprintf(&command, "%s %s 2>/dev/null", args->global_args->command, args->path->value);
 
     /* If is a shared mount, avoid any other shared mount concurrency */
-    if(rc_stringlist_find(args->global_args->shared, args->path->value)){
+    if(rc_stringlist_find(args->global_args->shared, args->path->value)) {
         /* Allocate memory and compose the check command */
         xasprintf(&check_command, "mountinfo --quiet %s", args->path->value);
         pthread_mutex_lock(&args->global_args->shared_lock);
@@ -312,18 +304,16 @@ int main(int argc, char **argv)
     global_args_t global_args;  // arguments shared among all threads
     thread_args_t *args_array;  // array of arguments for each thread
     int exitCode = 0;           // return value of the main function
-    outcome_t *pOutcome;     // return value of the umount operation
+    outcome_t *pOutcome;        // return value of the umount operation
 
     /* Check first argument provided */
-    if(argc < 2)
-    {
+    if(argc < 2) {
         printf("No unmounting command provided!\n");
         exit(1);
     }
 
     /* Check if fuser is available in PATH */
-    if(system("command -v fuser >/dev/null 2>&1"))
-    {
+    if(system("command -v fuser >/dev/null 2>&1")) {
         printf("fuser is not installed, can't unmount anything!\n");
         exit(1);
     }
@@ -345,8 +335,7 @@ int main(int argc, char **argv)
 
     /* Unmount each path in a different thread */
     i = 0;
-    TAILQ_FOREACH(path, to_unmount, entries)
-    {
+    TAILQ_FOREACH(path, to_unmount, entries) {
         args_array[i].index = i;
         args_array[i].path = path;
         pthread_mutex_init(&args_array[i].unmounting, NULL);
@@ -357,8 +346,7 @@ int main(int argc, char **argv)
     }
 
     /* Wait for all threads to finish and long info with the proper failure message */
-    for (i = 0; i < size; i++)
-    {
+    for (i = 0; i < size; i++) {
         if (strstr(argv[1], "-r") != NULL)
             ebegin("Remounting %s read-only", args_array[i].path->value);
         else
