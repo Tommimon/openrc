@@ -25,8 +25,7 @@
 struct t_args_t;
 
 /* Contains parameters shared among all threads */
-typedef struct
-{
+typedef struct {
     char* command;                // unmounting command to execute
     RC_STRINGLIST *shared;        // list of shared paths in the system
     pthread_mutex_t shared_lock;  // mutex to lock shared mount operations
@@ -34,14 +33,14 @@ typedef struct
 } global_args_t;
 
 /* Enumerate all the possible outcomes of the unmount procedure */
-enum Outcome {
+typedef enum {
     SUCCESS,  // unmounting was successful
     THIS,     // the mount point is being used by this process
     UNKNOWN,  // the mount point is being used but processes can't be found
     FUSER,    // fuser command failed
     KILL,     // the mount point is being used by other processes but the kill command failed
     ERROR,    // unknown error
-};
+} outcome_t;
 
 /* Provide a different failure message for each possible outcome */
 const char *failure_messages[] = {
@@ -183,7 +182,7 @@ static int unmount_with_retries(char *command, char *mount_point){
     char *fuser_command;                            // command to execute fuser and find the pids of the processes that use the mount point
     char *kill_command;                             // command to kill the processes that use the mount point
     char pidString[8];                              // string to store the pid (max value is 4194304 source https://unix.stackexchange.com/questions/16883/what-is-the-maximum-value-of-the-process-id)
-    enum Outcome retVal = SUCCESS;                  // return value of the function
+    outcome_t retVal = SUCCESS;                  // return value of the function
     const char *f_opts = "-m -c";                         // fuser options
     const char *f_kill = "-s ";                           // fuser kill options
     const char* timeout = getenv("rc_fuser_timeout");     // fuser timeout
@@ -252,10 +251,10 @@ static void *unmount_one(void *input)
     char *command;                                 // command to execute
     char *check_command;                           // command to check mountpoint existence
     int i, j;                                      // iterators
-    enum Outcome* pRetval;                         // return value of the unmount with retries phase
+    outcome_t* pRetval;                         // return value of the unmount with retries phase
 
     /* Allocate and initialize return value */
-    pRetval = xmalloc(sizeof(enum Outcome));
+    pRetval = xmalloc(sizeof(outcome_t));
     *pRetval = SUCCESS;
 
     /* Check all previous paths in the list for children */
@@ -313,7 +312,7 @@ int main(int argc, char **argv)
     global_args_t global_args;  // arguments shared among all threads
     thread_args_t *args_array;  // array of arguments for each thread
     int exitCode = 0;           // return value of the main function
-    enum Outcome *pOutcome;     // return value of the umount operation
+    outcome_t *pOutcome;     // return value of the umount operation
 
     /* Check first argument provided */
     if(argc < 2)
