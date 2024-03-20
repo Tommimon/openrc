@@ -60,7 +60,6 @@ typedef struct t_args_t
     RC_STRING *path;              // path to unmount
     pthread_mutex_t unmounting;   // mutex locked until the path is unmounted
     global_args_t *global_args;   // parameters shared among all threads
-    enum Outcome retval;          // return value of the unmounting command
 } thread_args_t;
 
 /* Pass arguments as vector of string to a command and open standard output as readable file */
@@ -251,6 +250,7 @@ static void *unmount_one(void *input)
     char *command;                                 // command to execute
     char *check_command;                           // command to check mountpoint existence
     int i, j;                                      // iterators
+    enum Outcome retval = SUCCESS;                 // return value of the unmount with retries phase
 
     /* Check all previous paths in the list for children */
     prev = args->path;
@@ -277,21 +277,18 @@ static void *unmount_one(void *input)
         pthread_mutex_lock(&args->global_args->shared_lock);
         /* Unmount only if is still mounted */
         if(system(check_command) == 0)
-            args->retval = unmount_with_retries(command, args->path->value);
-        else
-            args->retval = SUCCESS;
+            retval = unmount_with_retries(command, args->path->value);
         pthread_mutex_unlock(&args->global_args->shared_lock);
     }
     else
-    {
         /* Unmount the path */
-        args->retval = unmount_with_retries(command, args->path->value);
-    }
+        retval = unmount_with_retries(command, args->path->value);
 
     /* Free memory */
     free(command);
     if (check_command)
         free(check_command);
+    return (void *) retval;
 }
 
 
@@ -310,6 +307,7 @@ int main(int argc, char **argv)
     global_args_t global_args;  // arguments shared among all threads
     thread_args_t *args_array;  // array of arguments for each thread
     int exitCode = 0;           // return value of the main function
+    enum Outcome outcome;       // return value of the umount operation
 
     /* Check first argument provided */
     if(argc < 2)
@@ -360,13 +358,13 @@ int main(int argc, char **argv)
             ebegin("Remounting %s read-only", args_array[i].path->value);
         else
             ebegin("Unmounting %s", args_array[i].path->value);
-        pthread_join(threads[i], NULL);
+        pthread_join(threads[i], (void **) &outcome);
         pthread_mutex_unlock(&args_array[i].unmounting);
-        if (args_array[i].retval == THIS)
-            eend(args_array[i].retval, "%s %s", failure_messages[args_array[i].retval], args_array[i].path->value);
+        if (outcome == THIS)
+            eend(outcome, "%s %s", failure_messages[outcome], args_array[i].path->value);
         else
-            eend(args_array[i].retval, "%s", failure_messages[args_array[i].retval]);
-        if (args_array[i].retval == ERROR)
+            eend(outcome, "%s", failure_messages[outcome]);
+        if (outcome == ERROR)
             exitCode = 1;     /* Set exit code to 1 because this should never happen */
     }
 
