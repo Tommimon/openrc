@@ -162,8 +162,10 @@ static int populate_unmount_list(RC_STRINGLIST **list, int argc, char **argv)
     while (getline(&path, &len, fp) != -1)
     {
         path[strlen(path) - 1] = '\0'; /* Remove trailing '\n' */
+        if(strstr(path, "/proc") == NULL) {
         rc_stringlist_add(*list, path);
         size++;
+        }
     }
 
     pclose(fp);
@@ -250,7 +252,11 @@ static void *unmount_one(void *input)
     char *command;                                 // command to execute
     char *check_command;                           // command to check mountpoint existence
     int i, j;                                      // iterators
-    enum Outcome retval = SUCCESS;                 // return value of the unmount with retries phase
+    enum Outcome* pRetval;                         // return value of the unmount with retries phase
+
+    /* Allocate and initialize return value */
+    pRetval = xmalloc(sizeof(enum Outcome));
+    *pRetval = SUCCESS;
 
     /* Check all previous paths in the list for children */
     prev = args->path;
@@ -277,18 +283,18 @@ static void *unmount_one(void *input)
         pthread_mutex_lock(&args->global_args->shared_lock);
         /* Unmount only if is still mounted */
         if(system(check_command) == 0)
-            retval = unmount_with_retries(command, args->path->value);
+            *pRetval = unmount_with_retries(command, args->path->value);
         pthread_mutex_unlock(&args->global_args->shared_lock);
     }
     else
         /* Unmount the path */
-        retval = unmount_with_retries(command, args->path->value);
+        *pRetval = unmount_with_retries(command, args->path->value);
 
     /* Free memory */
     free(command);
     if (check_command)
         free(check_command);
-    return (void *) retval;
+    return pRetval;
 }
 
 
@@ -307,7 +313,7 @@ int main(int argc, char **argv)
     global_args_t global_args;  // arguments shared among all threads
     thread_args_t *args_array;  // array of arguments for each thread
     int exitCode = 0;           // return value of the main function
-    enum Outcome outcome;       // return value of the umount operation
+    enum Outcome *pOutcome;     // return value of the umount operation
 
     /* Check first argument provided */
     if(argc < 2)
@@ -358,14 +364,15 @@ int main(int argc, char **argv)
             ebegin("Remounting %s read-only", args_array[i].path->value);
         else
             ebegin("Unmounting %s", args_array[i].path->value);
-        pthread_join(threads[i], (void **) &outcome);
+        pthread_join(threads[i], (void **) &pOutcome);
         pthread_mutex_unlock(&args_array[i].unmounting);
-        if (outcome == THIS)
-            eend(outcome, "%s %s", failure_messages[outcome], args_array[i].path->value);
+        if (*pOutcome == THIS)
+            eend(*pOutcome, "%s %s", failure_messages[*pOutcome], args_array[i].path->value);
         else
-            eend(outcome, "%s", failure_messages[outcome]);
-        if (outcome == ERROR)
+            eend(*pOutcome, "%s", failure_messages[*pOutcome]);
+        if (*pOutcome == ERROR)
             exitCode = 1;     /* Set exit code to 1 because this should never happen */
+        free(pOutcome);
     }
 
     /* Destroy mutexes */
