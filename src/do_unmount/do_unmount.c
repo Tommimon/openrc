@@ -63,8 +63,8 @@ typedef struct t_args_t
     enum Outcome retval;          // return value of the unmounting command
 } thread_args_t;
 
-/* Pass arguments to a command and open standard output as readable file */
-FILE *popen_with_args(const char *command, int argc, char **argv) {
+/* Pass arguments as vector of string to a command and open standard output as readable file */
+static FILE *popen_vec(const char *command, int argc, char **argv) {
     FILE *fp;   // file pointer to program output
     char *cmd;  // command with all arguments
     int length; // length of the command with all arguments
@@ -93,7 +93,7 @@ FILE *popen_with_args(const char *command, int argc, char **argv) {
 }
 
 /* Populate the list of shared mounts in the system */
-void populate_shared_list(RC_STRINGLIST **list) {
+static void populate_shared_list(RC_STRINGLIST **list) {
     FILE *fp;               // file pointer to the mountinfo file
     size_t len = 0;         // length of the line read
     char *line = NULL;      // line read from the mountinfo file
@@ -142,7 +142,7 @@ void populate_shared_list(RC_STRINGLIST **list) {
 }
 
 /* Pass arguments to mountinfo and store output in a list of paths to unmount */
-int populate_unmount_list(RC_STRINGLIST **list, int argc, char **argv)
+static int populate_unmount_list(RC_STRINGLIST **list, int argc, char **argv)
 {
     int size = 0;       // number of paths to unmount
     FILE *fp;           // file pointer to the output of the command
@@ -151,7 +151,7 @@ int populate_unmount_list(RC_STRINGLIST **list, int argc, char **argv)
 
 
     /* Open the command for reading */
-    fp = popen_with_args("mountinfo", argc-2, argv+2);
+    fp = popen_vec("mountinfo", argc-2, argv+2);
     if (fp == NULL)
     {
         printf("Failed to run mountinfo command, can't unmount anything!\n");
@@ -174,7 +174,7 @@ int populate_unmount_list(RC_STRINGLIST **list, int argc, char **argv)
 }
 
 /* If unmount command fails terminate the programs using it and retry */
-int unmount_with_retries(char *command, char *mount_point){
+static int unmount_with_retries(char *command, char *mount_point){
     int retry = 4;                                  // effectively TERM, sleep 1, TERM, sleep 1, KILL, sleep 1
     size_t len = 0;                                 // length of the line read
     char *pids = NULL;                              // line read from the fuser command
@@ -245,7 +245,7 @@ int unmount_with_retries(char *command, char *mount_point){
 }
 
 /* Execute the unmount of the provided path */
-void *unmount_one(void *input)
+static void *unmount_one(void *input)
 {
     thread_args_t *args = (thread_args_t *)input;  // arguments passed to the thread
     RC_STRING *prev;                               // backwards iterator in the paths list
