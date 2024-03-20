@@ -120,7 +120,7 @@ void populate_shared_list(RC_STRINGLIST **list) {
             if (i == 4)
             {
                 /* Copy token into path */
-                xasprintf(path, "%s", token);
+                xasprintf(&path, "%s", token);
             }
             /* If token contains "shared:", note that if there is no optional field this token will be the separator character '-' */
             else if (i == 6 && strstr(token, "shared:") != NULL)
@@ -197,8 +197,8 @@ int unmount_with_retries(char *command, char *mount_point){
         timeout = "60";
 
     /* Allocate memory for the commands */
-    xasprintf(fuser_command, "timeout -s KILL %s fuser %s %s 2>/dev/null", timeout, f_opts, mount_point);
-    xasprintf(kill_command, "fuser %sTERM -k %s \"%s\" >/dev/null 2>&1", f_kill, f_opts, mount_point);
+    xasprintf(&fuser_command, "timeout -s KILL %s fuser %s %s 2>/dev/null", timeout, f_opts, mount_point);
+    xasprintf(&kill_command, "fuser %sTERM -k %s \"%s\" >/dev/null 2>&1", f_kill, f_opts, mount_point);
 
     /* Execute the unmount command, send term/kill signal and retry if it fails */
     while(system(command) != 0){
@@ -269,12 +269,12 @@ void *unmount_one(void *input)
     }
 
     /* Allocate memory and compose the unmount/remount command */
-    xasprintf(command, "%s %s 2>/dev/null", args->global_args->command, args->path->value);
+    xasprintf(&command, "%s %s 2>/dev/null", args->global_args->command, args->path->value);
 
     /* If is a shared mount, avoid any other shared mount concurrency */
     if(rc_stringlist_find(args->global_args->shared, args->path->value)){
         /* Allocate memory and compose the check command */
-        xasprintf(check_command, "mountinfo --quiet %s", args->path->value);
+        xasprintf(&check_command, "mountinfo --quiet %s", args->path->value);
         pthread_mutex_lock(&args->global_args->shared_lock);
         /* Unmount only if is still mounted */
         if(system(check_command) == 0)
