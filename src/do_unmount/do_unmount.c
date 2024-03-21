@@ -61,7 +61,8 @@ typedef struct t_args_t {
 } thread_args_t;
 
 /* Pass arguments as vector of string to a command and open standard output as readable file */
-static FILE *popen_vec(const char *command, int argc, char **argv)
+static FILE *
+popen_vec(const char *command, int argc, char **argv)
 {
     FILE *fp;   // file pointer to program output
     char *cmd;  // command with all arguments
@@ -91,7 +92,8 @@ static FILE *popen_vec(const char *command, int argc, char **argv)
 }
 
 /* Populate the list of shared mounts in the system */
-static void populate_shared_list(RC_STRINGLIST **list)
+static void 
+populate_shared_list(RC_STRINGLIST **list)
 {
     FILE *fp;               // file pointer to the mountinfo file
     size_t len = 0;         // length of the line read
@@ -135,7 +137,8 @@ static void populate_shared_list(RC_STRINGLIST **list)
 }
 
 /* Pass arguments to mountinfo and store output in a list of paths to unmount */
-static int populate_unmount_list(RC_STRINGLIST **list, int argc, char **argv)
+static int 
+populate_unmount_list(RC_STRINGLIST **list, int argc, char **argv)
 {
     int size = 0;       // number of paths to unmount
     FILE *fp;           // file pointer to the output of the command
@@ -167,7 +170,8 @@ static int populate_unmount_list(RC_STRINGLIST **list, int argc, char **argv)
 }
 
 /* If unmount command fails terminate the programs using it and retry */
-static int unmount_with_retries(char *command, char *mount_point)
+static int 
+unmount_with_retries(char *command, char *mount_point)
 {
     int retry = 4;                                      // effectively TERM, sleep 1, TERM, sleep 1, KILL, sleep 1
     size_t len = 0;                                     // length of the line read
@@ -238,7 +242,8 @@ static int unmount_with_retries(char *command, char *mount_point)
 }
 
 /* Execute the unmount of the provided path */
-static void *unmount_one(void *input)
+static void *
+unmount_one(void *input)
 {
     thread_args_t *args = (thread_args_t *)input;  // arguments passed to the thread
     RC_STRING *prev;                               // backwards iterator in the paths list
