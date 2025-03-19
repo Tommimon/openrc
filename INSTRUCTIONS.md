@@ -33,6 +33,8 @@ libcap-dev
 
 ## Build and install
 
+Find out ip in guest system with `ifconfig`.
+
 Make sure to have `sshpass` installed, navigate to `openrc` folder and run the following command:
 
 ```fish
