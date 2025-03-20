@@ -40,3 +40,7 @@ Make sure to have `sshpass` installed, navigate to `openrc` folder and run the f
 ```fish
 sshpass -p 'root' scp -r . root@192.169.122.124:/root/openrc; and sshpass -p 'root' ssh root@192.169.122.124 'rm -rf /root/openrc/builddir; cd /root/openrc; meson setup builddir; meson compile -C builddir; DESTDIR=/ meson install -C builddir; reboot'
 ```
+
+## Notes
+
+The new versions of openrc are not compatible with the old alpine iso I used. Do tests with clean openrc to find proper version
